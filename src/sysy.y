@@ -21,7 +21,7 @@ void yyerror(std::unique_ptr<Basenode> &ast, const char *s);
 using namespace std;
 
 %}
-
+%define parse.trace
 
 %parse-param { std::unique_ptr<Basenode> &ast }
 
@@ -36,11 +36,11 @@ using namespace std;
 %token INT RETURN CONST
 %token <int_val> INT_CONST
 %token <str_val> IDENT
-%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem
+%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp
 %type <ast_val> FuncDef FuncType Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp
 %token LE GE EQ NE AND OR 
 %type <op> HelpAdd HelpE HelpR HelpM
-%type <astlist> ConstDefList VarDefList BlockItemList Blockop
+%type <astlist> ConstDefList VarDefList BlockItemList Blockop 
 
 
 %%
@@ -51,6 +51,18 @@ CompUnit
     auto astroot=make_unique<CompUnit>();
     astroot->func_def = unique_ptr<Basenode>($1);
     ast=move(astroot);
+  }
+  ;
+
+// 可选的表达式（0个或1个）
+OptExp
+  : /* empty */ {
+    $$ = nullptr;
+    std::cerr << "[DEBUG] OptExp: empty" << std::endl;
+  }
+  | Exp {
+    $$ = $1;
+    std::cerr << "[DEBUG] OptExp: with Exp, exp=" << $1 << std::endl;
   }
   ;
 LVal
@@ -115,7 +127,7 @@ ConstDecl
   : CONST BType ConstDefList ';' {
     auto thisc=new ConstDecl();
     thisc->btype=unique_ptr<Basenode>($2);
-    thisc->constdef=std::move(*($3));
+    thisc->constdef=std::move(*$3);
     $$=thisc;
   }
   ;
@@ -145,7 +157,7 @@ VarDecl
   : BType VarDefList ';' {
     auto thisv=new Vardecl();
     thisv->btype=unique_ptr<Basenode>($1);
-    thisv->vardef=std::move(*($2));
+    thisv->vardef=std::move(*$2);
     $$=thisv;
   };
 // VarDef :: = IDENT | IDENT "=" InitVal;
@@ -191,26 +203,30 @@ Block
   : '{' Blockop '}' {
     //setreg();
     auto thisb=new Block();
-    thisb->blockitem=std::move(*($2));
+    thisb->blockitem=std::move(*$2);
     $$ = thisb;
   }
 
   ;
 BlockItem
-  : Decl {
-    auto thisb=new BlockItem();
-    thisb->decl=unique_ptr<Basenode>($1);
-    thisb->which=1;
-    $$=thisb;
-  }
-  | Stmt {
+  : Stmt {
     auto thisb=new BlockItem();
     thisb->stmt=unique_ptr<Basenode>($1);
     thisb->which=2;
     $$=thisb;
+  }
+  | Decl {
+    auto thisb=new BlockItem();
+    thisb->decl=unique_ptr<Basenode>($1);
+    thisb->which=1;
+    $$=thisb;
   };
-// Stmt          ::= LVal "=" Exp ";"
-//                 | "return" Exp ";";
+  
+// Stmt ::= LVal "=" Exp ";"
+//        | [Exp] ";"
+//        | Block
+//        | "return" [Exp] ";";
+
 Stmt
   : LVal '=' Exp ';'{
     auto thiss=new Stmt();
@@ -219,13 +235,31 @@ Stmt
     thiss->which=1;
     $$=thiss;
   }
-  | RETURN Exp ';' {
+  | RETURN OptExp ';'  {
     auto thisstmt=new Stmt();
-    thisstmt->exp=unique_ptr<Basenode>($2);
-    thisstmt->which=2;
+    thisstmt->optexp=unique_ptr<Basenode>($2);
+    thisstmt->which=4;
     $$=thisstmt;
   }
+  | Block {
+    auto thiss=new Stmt();
+    thiss->block=unique_ptr<Basenode>($1);
+    thiss->which=3;
+    $$=thiss;
+  }
+  | OptExp ';'  {
+    auto thiss=new Stmt();
+    thiss->optexp=unique_ptr<Basenode>($1);
+    thiss->which=2;
+    $$=thiss;
+  }
+  | ';'{
+    auto thiss=new Stmt();
+    thiss->which=2;
+    $$=thiss;  
+  }
   ;
+
 
 Exp 
   : LOExp {
@@ -240,18 +274,21 @@ PEXp
     auto thispexp=new PExp();
     thispexp->exp=unique_ptr<Basenode>($2);
     thispexp->which=1;
+    std::cerr << "Created PExp with Exp, which=1" << std::endl;
     $$=thispexp;
   }
   | LVal {
     auto thisp=new PExp();
     thisp->lval=unique_ptr<Basenode>($1);
     thisp->which=2;
+    std::cerr << "Created PExp with LVal, which=2, lval ident: " << static_cast<Lval*>($1)->ident << std::endl;
     $$=thisp;
   }
   | Number  {
     auto thispexp=new PExp();
     thispexp->number=unique_ptr<Basenode>($1);
     thispexp->which=3;
+    std::cerr << "Created PExp with Number, which=3" << std::endl;
     $$=thispexp;    
   }
   ;

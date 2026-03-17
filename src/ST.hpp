@@ -8,21 +8,25 @@ class ST
 {
 public:
     std::map<std::string, t> core;
+    int layercnt;
     ST *parent;
     ST()
     {
         parent = nullptr;
+        layercnt = 0;
     }
     ST *enter_scope(bool isfirst = true)
     {
         auto new_scope = new ST();
         new_scope->parent = this;
+        new_scope->layercnt = layercnt + 1;
         return new_scope;
     }
     bool add(std::string &key, t item)
     {
         if (core.find(key) != core.end())
             return false;
+
         core[key] = item;
         return true;
     }

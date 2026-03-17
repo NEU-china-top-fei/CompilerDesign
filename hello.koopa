@@ -1,5 +1,10 @@
 fun @main(): i32 {
 %entry:
-    ret 2
+    %a1  = alloc i32
+    store 1, %a1
+    store 2, %a1
+    %a2  = alloc i32
+    store 3, %a2
+    ret 0
 
 }

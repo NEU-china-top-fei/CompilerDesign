@@ -59,7 +59,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 {LineComment}   { /* 忽略, 不做任何操作 */ }
 
 "int"           { return INT; }
-"return"        { return RETURN; }
+"return"        {  return RETURN; }
 {CONST}         {return CONST;}
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
 
