@@ -15,6 +15,8 @@ extern int yyparse(unique_ptr<Basenode> &ast);
 int reg_cnt = 0;
 int cnt_if = 0;
 int globalcnt = 0;
+std::vector<std::string> break_tag;
+std::vector<std::string> continue_tag;
 // bool if_terminate = false;
 std::map<std::string, std::string> name2op;
 int main(int argc, const char *argv[])

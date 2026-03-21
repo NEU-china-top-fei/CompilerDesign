@@ -38,7 +38,7 @@ using namespace std;
 %token <str_val> IDENT
 %type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp ElseOp
 %type <ast_val> FuncDef FuncType Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp
-%token LE GE EQ NE AND OR IF ELSE
+%token LE GE EQ NE AND OR IF ELSE WHILE BREAK CONTINUE
 %type <op> HelpAdd HelpE HelpR HelpM
 %type <astlist> ConstDefList VarDefList BlockItemList Blockop 
 
@@ -229,6 +229,9 @@ BlockItem
 //                 | Block
 //                 | "return" [Exp] ";";
 //                 | "if" "(" Exp ")" Stmt ["else" Stmt]
+//                 | "while" "(" Exp ")" Stmt
+//                 | "break" ";"
+//                 | "continue" ";"
 //[]    refers to repeat zero or one time
 
 Stmt
@@ -265,11 +268,24 @@ Stmt
     thiss->which=2;
     $$=thiss;
   }
-  // | ';'{
-  //   auto thiss=new Stmt();
-  //   thiss->which=2;
-  //   $$=thiss;  
-  // }
+  | WHILE '(' Exp ')' Stmt {
+    auto thiss=new Stmt();
+    thiss->which=6;
+    thiss->exp=unique_ptr<Basenode>($3);
+    thiss->stmt=unique_ptr<Basenode>($5);
+    thiss->optstmt=nullptr;
+    $$=thiss;
+  }
+  | BREAK {
+    auto thiss=new Stmt();
+    thiss->which=7;
+    $$=thiss;
+  }
+  | CONTINUE {
+    auto thiss=new Stmt();
+    thiss->which=8;
+    $$=thiss;
+  }
   ;
 
 

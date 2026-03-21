@@ -14,7 +14,8 @@ extern int reg_cnt;
 #define increg() (reg_cnt++)
 #define getreg() (reg_cnt) // 返回当前语句的目标寄存器
 #define decreg(x) (reg_cnt -= x)
-
+extern std::vector<std::string> break_tag;
+extern std::vector<std::string> continue_tag;
 extern std::map<std::string, std::string> name2op;
 extern int cnt_if;
 inline std::string demangle(const char *name)
@@ -357,8 +358,11 @@ public:
 // Stmt          ::= LVal "=" Exp ";"
 //                 | [Exp] ";"
 //                 | Block
-//                 | "if" "(" Exp ")" Stmt ["else" Stmt]
 //                 | "return" [Exp] ";";
+//                 | "if" "(" Exp ")" Stmt ["else" Stmt]
+//                 | "while" "(" Exp ")" Stmt
+//                 | "break" ";"
+//                 | "continue" ";"
 //[]    refers to repeat zero or one time
 class Stmt : public Basenode
 {
@@ -369,11 +373,22 @@ public:
     std::unique_ptr<Basenode> optexp;
     std::unique_ptr<Basenode> stmt;
     std::unique_ptr<Basenode> optstmt;
-    void process_if()
+
+    void process_if_while(bool isloop = false) // return the header or tail flag
     {
         int cur = cnt_if++;
-        std::string predic = this->exp->dumpcode(), theni = "%then" + std::to_string(cur), elsei = "%else" + std::to_string(cur), endi = "%end" + std::to_string(cur);
+        std::string loopi = "%while_entry" + std::to_string(cur), theni = "%then" + std::to_string(cur), elsei = "%else" + std::to_string(cur), endi = "%end" + std::to_string(cur);
+        if (isloop)
+        {
+            std::cout << "    jump " << loopi << std::endl
+                      << std::endl;
+            std::cout << loopi << ":" << std::endl;
+            break_tag.push_back(endi);
+            continue_tag.push_back(loopi);
+        }
+        std::string predic = this->exp->dumpcode();
         std::string *judge = process_variable(predic);
+
         std::string target = this->optstmt == nullptr ? endi : elsei; // 若没有else直接跳转到end
         if (judge)
         {
@@ -388,7 +403,13 @@ public:
         std::cout << theni << ":" << std::endl;
         bool istern = this->stmt->bdumpcode();
         if (!istern)
-            std::cout << "    jump " << endi << std::endl;
+        {
+            if (!isloop)
+                std::cout << "    jump " << endi << std::endl;
+            else
+                std::cout << "    jump " << loopi << std::endl;
+        }
+
         if (this->optstmt != nullptr)
         {
             std::cout << elsei << ":" << std::endl;
@@ -398,6 +419,7 @@ public:
         }
         std::cout << endi << ":" << std::endl;
     }
+
     int which;
     bool bdumpcode()
     {
@@ -430,7 +452,35 @@ public:
         }
         case 5:
         {
-            process_if();
+            process_if_while();
+            return false;
+        }
+        break;
+        case 6:
+        {
+            process_if_while(true);
+            return false;
+        }
+        break;
+        case 7:
+        {
+            if (!break_tag.empty())
+            {
+                std::cout << "    jump " << break_tag.back() << std::endl;
+                break_tag.pop_back();
+                return true;
+            }
+            return false;
+        }
+        break;
+        case 8:
+        {
+            if (!continue_tag.empty())
+            {
+                std::cout << "    jump " << continue_tag.back() << std::endl;
+                continue_tag.pop_back();
+                return true;
+            }
             return false;
         }
         break;
@@ -976,7 +1026,7 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     st->exp = std::move(predic);
     st->stmt = std::move(stex);
     st->optstmt = nullptr;
-    st->process_if();
+    st->process_if_while();
     EExp *p = static_cast<EExp *>(st->exp.get());
     p->eexp.release();
 
