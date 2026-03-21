@@ -3,24 +3,26 @@
 #include <memory>
 #include <variant>
 // header for symbol table
+extern int globalcnt;
 template <typename t>
 class ST
 {
 public:
     std::map<std::string, t> core;
-    int layercnt;
     ST *parent;
     ST()
     {
         parent = nullptr;
-        layercnt = 0;
     }
     ST *enter_scope(bool isfirst = true)
     {
         auto new_scope = new ST();
         new_scope->parent = this;
-        new_scope->layercnt = layercnt + 1;
         return new_scope;
+    }
+    int getcnt()
+    {
+        return globalcnt++;
     }
     bool add(std::string &key, t item)
     {

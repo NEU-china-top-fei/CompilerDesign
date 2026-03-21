@@ -36,9 +36,9 @@ using namespace std;
 %token INT RETURN CONST
 %token <int_val> INT_CONST
 %token <str_val> IDENT
-%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp
+%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp ElseOp
 %type <ast_val> FuncDef FuncType Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp
-%token LE GE EQ NE AND OR 
+%token LE GE EQ NE AND OR IF ELSE
 %type <op> HelpAdd HelpE HelpR HelpM
 %type <astlist> ConstDefList VarDefList BlockItemList Blockop 
 
@@ -53,16 +53,18 @@ CompUnit
     ast=move(astroot);
   }
   ;
-
+ElseOp
+  : {$$=nullptr;}
+  | ELSE Stmt {
+    $$=$2;
+  }
 // 可选的表达式（0个或1个）
 OptExp
   : /* empty */ {
     $$ = nullptr;
-    std::cerr << "[DEBUG] OptExp: empty" << std::endl;
   }
   | Exp {
     $$ = $1;
-    std::cerr << "[DEBUG] OptExp: with Exp, exp=" << $1 << std::endl;
   }
   ;
 LVal
@@ -222,10 +224,12 @@ BlockItem
     $$=thisb;
   };
   
-// Stmt ::= LVal "=" Exp ";"
-//        | [Exp] ";"
-//        | Block
-//        | "return" [Exp] ";";
+// Stmt          ::= LVal "=" Exp ";"
+//                 | [Exp] ";"
+//                 | Block
+//                 | "return" [Exp] ";";
+//                 | "if" "(" Exp ")" Stmt ["else" Stmt]
+//[]    refers to repeat zero or one time
 
 Stmt
   : LVal '=' Exp ';'{
@@ -247,17 +251,25 @@ Stmt
     thiss->which=3;
     $$=thiss;
   }
+  | IF '(' Exp ')' Stmt ElseOp {
+    auto thiss=new Stmt();
+    thiss->exp=unique_ptr<Basenode>($3);
+    thiss->optstmt=unique_ptr<Basenode>($6);
+    thiss->stmt=unique_ptr<Basenode>($5);
+    thiss->which=5;
+    $$=thiss;
+  }
   | OptExp ';'  {
     auto thiss=new Stmt();
     thiss->optexp=unique_ptr<Basenode>($1);
     thiss->which=2;
     $$=thiss;
   }
-  | ';'{
-    auto thiss=new Stmt();
-    thiss->which=2;
-    $$=thiss;  
-  }
+  // | ';'{
+  //   auto thiss=new Stmt();
+  //   thiss->which=2;
+  //   $$=thiss;  
+  // }
   ;
 
 
@@ -274,21 +286,21 @@ PEXp
     auto thispexp=new PExp();
     thispexp->exp=unique_ptr<Basenode>($2);
     thispexp->which=1;
-    std::cerr << "Created PExp with Exp, which=1" << std::endl;
+    //std::cerr << "Created PExp with Exp, which=1" << std::endl;
     $$=thispexp;
   }
   | LVal {
     auto thisp=new PExp();
     thisp->lval=unique_ptr<Basenode>($1);
     thisp->which=2;
-    std::cerr << "Created PExp with LVal, which=2, lval ident: " << static_cast<Lval*>($1)->ident << std::endl;
+    //std::cerr << "Created PExp with LVal, which=2, lval ident: " << static_cast<Lval*>($1)->ident << std::endl;
     $$=thisp;
   }
   | Number  {
     auto thispexp=new PExp();
     thispexp->number=unique_ptr<Basenode>($1);
     thispexp->which=3;
-    std::cerr << "Created PExp with Number, which=3" << std::endl;
+    //std::cerr << "Created PExp with Number, which=3" << std::endl;
     $$=thispexp;    
   }
   ;

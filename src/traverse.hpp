@@ -2,18 +2,25 @@
 #include "koopa.h"
 #include <iostream>
 #include <assert.h>
-#include <string>
+#include <string.h>
 
 // code generation strategy:stack machine
 // result of a single expression is stored at t0 register if no special instruction
 std::map<koopa_raw_value_t, int> offset;
 int sp = 0;
+int labelid = 0;
 // judge if return
 bool judge(const koopa_raw_value_t &v)
 {
-    bool isreturn = v->ty->tag != KOOPA_RTT_UNIT;
-    bool isalloc = v->kind.tag == KOOPA_RVT_ALLOC;
-    return isreturn || isalloc;
+    switch (v->kind.tag)
+    {
+    case KOOPA_RVT_ALLOC:
+    case KOOPA_RVT_LOAD:
+    case KOOPA_RVT_BINARY:
+        return true;
+    default:
+        return false;
+    }
 }
 std::map<koopa_raw_binary_op_t, std::string> binop;
 
@@ -37,7 +44,26 @@ void visit(const koopa_raw_basic_block_t &bblock);
 void visit(const koopa_raw_value_t &value);
 void visit(const koopa_raw_return_t &ret);
 void visit(const koopa_raw_integer_t &Int);
-void visit(const koopa_raw_binary_t &bin);
+// void visit(const koopa_raw_binary_t &bin);
+void visit(const koopa_raw_branch_t &bran);
+void visit(const koopa_raw_block_arg_ref_t &bar);
+void visit(const koopa_raw_jump_t &jump)
+{
+    std::cout << "    j " << (jump.target->name) + 1 << std::endl
+              << std::endl;
+    // visit(jump.target);
+}
+
+void visit(const koopa_raw_branch_t &bran)
+{
+    // static int times = 1;
+    // std::cerr << "called " << times++ << std::endl;
+    visit(bran.cond);
+    load(bran.cond, std::string("t0"));
+    std::cout << "    bnez " << "t0, " << (bran.true_bb->name) + 1 << std::endl;
+    std::cout << "    j " << (bran.false_bb->name) + 1 << std::endl;
+    std::cout << std::endl;
+}
 
 void visit(const koopa_raw_binary_t &bin, const koopa_raw_value_t &ret)
 {
@@ -148,6 +174,7 @@ void visit(const koopa_raw_function_t &function)
 }
 void visit(const koopa_raw_basic_block_t &bblock)
 {
+    std::cout << (bblock->name + 1) << ":" << std::endl;
     visit(bblock->insts);
 }
 // 增加第二个参数 ret，代表这条 load 指令自己
@@ -189,6 +216,12 @@ void visit(const koopa_raw_value_t &value)
         break;
     case KOOPA_RVT_STORE:
         visit(kind.data.store);
+        break;
+    case KOOPA_RVT_BRANCH:
+        visit(kind.data.branch);
+        break;
+    case KOOPA_RVT_JUMP:
+        visit(kind.data.jump);
         break;
     default:
         // 其他类型暂时遇不到

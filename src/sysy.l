@@ -35,6 +35,8 @@ EQ      "=="
 NE     "!="
 AND     "&&"
 OR      "||"
+IF      "if"
+ELSE    "else"
 
 CONST   "const"
 /* 标识符 */
@@ -61,6 +63,8 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "int"           { return INT; }
 "return"        {  return RETURN; }
 {CONST}         {return CONST;}
+{IF}            {yylval.op="if";return IF;}
+{ELSE}          {yylval.op="else";return ELSE;}
 {Identifier}    { yylval.str_val = new string(yytext); return IDENT; }
 
 {Decimal}       { yylval.int_val = strtol(yytext, nullptr, 0); return INT_CONST; }
