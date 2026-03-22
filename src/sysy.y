@@ -33,24 +33,51 @@ using namespace std;
   std::vector<std::unique_ptr<Basenode>> *astlist;
 }
 
-%token INT RETURN CONST
+%token INT RETURN CONST VOID
 %token <int_val> INT_CONST
 %token <str_val> IDENT
-%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp ElseOp
-%type <ast_val> FuncDef FuncType Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp
+%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp ElseOp Optfuncfp Optfuncrp
+%type <ast_val> FuncDef  Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp FuncFParam FuncFParams FuncRParams
 %token LE GE EQ NE AND OR IF ELSE WHILE BREAK CONTINUE
 %type <op> HelpAdd HelpE HelpR HelpM
-%type <astlist> ConstDefList VarDefList BlockItemList Blockop 
-
+%type <astlist> ConstDefList VarDefList BlockItemList Blockop FuncRlist FuncFlist
+%start Root
 
 %%
+Root
+  : CompUnit {
+    ast=unique_ptr<Basenode>($1);
+  }
 
-
+//CompUnit      ::= [CompUnit] (Decl | FuncDef);
 CompUnit
-  : FuncDef {
-    auto astroot=make_unique<CompUnit>();
+  : CompUnit Decl {
+    auto astroot=new CompUnit();
+    astroot->decl = unique_ptr<Basenode>($2);
+    astroot->compunit=unique_ptr<Basenode>($1);
+    astroot->which=1;
+    $$=astroot;
+  }
+  | CompUnit FuncDef {
+    auto astroot=new CompUnit();
+    astroot->func_def = unique_ptr<Basenode>($2);
+    astroot->compunit=unique_ptr<Basenode>($1);
+    astroot->which=2;
+    $$=astroot;
+  }
+  | Decl {
+    auto astroot=new CompUnit();
+    astroot->compunit=nullptr;
+    astroot->decl = unique_ptr<Basenode>($1);
+    astroot->which=1;
+    $$=astroot;
+  }
+  | FuncDef {
+    auto astroot=new CompUnit();
+    astroot->compunit=nullptr;
     astroot->func_def = unique_ptr<Basenode>($1);
-    ast=move(astroot);
+    astroot->which=2;
+    $$=astroot;
   }
   ;
 ElseOp
@@ -136,9 +163,15 @@ ConstDecl
 BType
   : INT {
     auto thisb=new Btype();
-    thisb->t=std::string("int");
+    thisb->t=std::string("i32");
     $$=thisb;
-  };
+  }
+  | VOID {
+    auto thisb=new Btype();
+    thisb->t=std::string("");
+    $$=thisb;
+  }
+  ;
 // ConstDef :: = IDENT "=" ConstInitVal;
 ConstDef
   : IDENT '=' ConstInitVal{
@@ -184,22 +217,62 @@ InitVal
     thisi->exp=unique_ptr<Basenode>($1);
     $$=thisi;
   };
+// 可选的表达式（0个或1个）
+Optfuncfp
+  : /* empty */ {
+    $$ = nullptr;
+  }
+  | FuncFParams {
+    $$ = $1;
+  }
+  ;
+Optfuncrp
+  : /* empty */ {
+    $$ = nullptr;
+  }
+  | FuncRParams {
+    $$ = $1;
+  }
+  ;
+// FuncDef       ::= FuncType IDENT "(" [FuncFParams] ")" Block;
 FuncDef
-  : FuncType IDENT '(' ')' Block {
+  : BType IDENT '(' Optfuncfp ')' Block {
     auto thisfunc=new Funcdef();
     thisfunc->func_type = unique_ptr<Basenode>($1);
-    thisfunc->ident = *unique_ptr<string>($2);
-    thisfunc->block = unique_ptr<Basenode>($5);
+    thisfunc->ident = *($2);
+    thisfunc->funcfparams=unique_ptr<Basenode>($4);
+    thisfunc->block = unique_ptr<Basenode>($6);
     $$ = thisfunc;
   }
   ;
-FuncType
-  : INT {
-    auto thisftype=new Functype();
-    thisftype->tpname="int";
-    $$ = thisftype;
+// FuncFParams   ::= FuncFParam {"," FuncFParam};
+// FuncFParam    ::= BType IDENT;
+FuncFlist 
+  : FuncFParam {
+    auto node=new std::vector<std::unique_ptr<Basenode>>();
+    node->push_back(unique_ptr<Basenode>($1));
+    $$=node;
+  }
+  | FuncFlist ',' FuncFParam {
+    ($1)->push_back(unique_ptr<Basenode>($3));
+    $$=$1;
   }
   ;
+FuncFParams
+  : FuncFlist {
+    auto f=new Funcfparams();
+    f->funcfparams=std::move(*$1);
+    $$=f;
+  }
+  ;
+FuncFParam
+  : BType IDENT {
+    auto f=new Funcfparam();
+    f->btype=unique_ptr<Basenode>($1);
+    f->ident=*($2);
+    $$=f;
+  }
+
 
 Block
   : '{' Blockop '}' {
@@ -276,12 +349,12 @@ Stmt
     thiss->optstmt=nullptr;
     $$=thiss;
   }
-  | BREAK {
+  | BREAK ';' {
     auto thiss=new Stmt();
     thiss->which=7;
     $$=thiss;
   }
-  | CONTINUE {
+  | CONTINUE ';' {
     auto thiss=new Stmt();
     thiss->which=8;
     $$=thiss;
@@ -320,6 +393,7 @@ PEXp
     $$=thispexp;    
   }
   ;
+// UnaryExp      ::= PrimaryExp | IDENT "(" [FuncRParams] ")" | UnaryOp UnaryExp;
 UExp 
   : PEXp{
     auto thisuexp=new UExp();
@@ -327,11 +401,18 @@ UExp
     thisuexp->which=1;
     $$=thisuexp;
   }
+  | IDENT '(' Optfuncrp ')' {
+    auto u=new UExp();
+    u->ident=*($1);
+    u->funcrparams=unique_ptr<Basenode>($3);
+    u->which=2;
+    $$=u;
+  }
   | UOp UExp{
     auto thisuexp=new UExp();
     thisuexp->uop=unique_ptr<Basenode>($1);
     thisuexp->uexp=unique_ptr<Basenode>($2);
-    thisuexp->which=2;
+    thisuexp->which=3;
     $$=thisuexp;
   }
   ;
@@ -355,6 +436,23 @@ UOp
     $$=thisuop;
   }
   ;
+// FuncRParams   ::= Exp {"," Exp};
+FuncRlist 
+  : Exp {
+    auto f=new std::vector<std::unique_ptr<Basenode>>();
+    f->push_back(unique_ptr<Basenode>($1));
+    $$=f;
+  }
+  | FuncRlist ',' Exp {
+    ($1)->push_back(unique_ptr<Basenode>($3));
+    $$=$1;
+  };
+FuncRParams 
+  : FuncRlist {
+    auto f=new Funcrparams();
+    f->explist=std::move(*$1);
+    $$=f;
+  }
 HelpM 
   :'*'
   {

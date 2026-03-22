@@ -19,11 +19,36 @@ std::vector<std::string> break_tag;
 std::vector<std::string> continue_tag;
 // bool if_terminate = false;
 std::map<std::string, std::string> name2op;
+/*
+getint(): i32
+getch(): i32
+getarray(*i32): i32
+putint(i32)
+putch(i32)
+putarray(i32, *i32)
+starttime()
+stoptime()
+*/
+void process_lib(ST<string> *t)
+{
+  t->add("getint", "i32");
+  t->add("getarray", "i32");
+  t->add("putint", "");
+  t->add("putch", "");
+  t->add("putarray", "");
+  t->add("getch", "i32");
+  t->add("starttime", "");
+  t->add("stoptime", "");
+}
 int main(int argc, const char *argv[])
 {
 
   constTable = new ST<int>();
-  varTable = new ST<string>();
+  varTable = new ST<ele>();
+  funcTable = new ST<string>();
+  globalconst = new ST<int>();
+  globalvar = new ST<string>();
+  process_lib(funcTable);
   assert(argc == 5);
   auto mode = argv[1];
   auto input = argv[2];
@@ -38,6 +63,29 @@ int main(int argc, const char *argv[])
   if (string(mode) == "-koopa")
   {
     freopen(output, "w", stdout);
+    std::cout << "decl @getint() : i32 " << std::endl
+              << "decl @getch() : i32" << std::endl
+              << "decl @getarray(*i32) : i32" << std::endl
+              << "decl @putint(i32)" << std::endl
+              << "decl @putch(i32) " << std::endl
+              << "decl @putarray(i32, *i32)" << std::endl
+              << "decl @starttime()" << std::endl
+              << "decl @stoptime()" << std::endl;
+    name2op["+"] = "add";
+    name2op["-"] = "sub";
+    name2op["*"] = "mul";
+    name2op["/"] = "div";
+    name2op["%"] = "mod";
+    name2op["<"] = "lt";
+    name2op[">"] = "gt";
+    name2op["<="] = "le";
+    name2op[">="] = "ge";
+    name2op["=="] = "eq";
+    name2op["!="] = "ne";
+    name2op["&&"] = "and";
+    name2op["||"] = "or";
+    name2op["!"] = "eq";
+    // std::cerr << "before ast" << std::endl;
     ast->dumpcode();
   }
   if (string(mode) == "-riscv")

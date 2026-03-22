@@ -65,6 +65,7 @@ Identifier    [a-zA-Z_][a-zA-Z0-9_]*
 "while"         {return WHILE;}
 "break"         {return BREAK;}
 "continue"      {return CONTINUE;}
+"void"          {return VOID;}
 {CONST}         {return CONST;}
 {IF}            {yylval.op="if";return IF;}
 {ELSE}          {yylval.op="else";return ELSE;}

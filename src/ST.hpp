@@ -4,6 +4,11 @@
 #include <variant>
 // header for symbol table
 extern int globalcnt;
+typedef struct
+{
+    std::string val;
+    bool is_ptr;
+} ele;
 template <typename t>
 class ST
 {
@@ -24,7 +29,7 @@ public:
     {
         return globalcnt++;
     }
-    bool add(std::string &key, t item)
+    bool add(std::string key, t item)
     {
         if (core.find(key) != core.end())
             return false;
@@ -53,4 +58,7 @@ public:
     // exit automatically
 };
 inline ST<int> *constTable;
-inline ST<std::string> *varTable;
+inline ST<ele> *varTable;
+inline ST<std::string> *funcTable;
+inline ST<int> *globalconst;
+inline ST<std::string> *globalvar;
