@@ -29,6 +29,17 @@ public:
     {
         return globalcnt++;
     }
+    bool add_global(std::string key, t item)
+    {
+        auto glo = this;
+        while (glo->parent != nullptr)
+            glo = glo->parent;
+        if (glo->core.find(key) != glo->core.end())
+            return false;
+
+        glo->core[key] = item;
+        return true;
+    }
     bool add(std::string key, t item)
     {
         if (core.find(key) != core.end())
@@ -57,8 +68,3 @@ public:
     }
     // exit automatically
 };
-inline ST<int> *constTable;
-inline ST<ele> *varTable;
-inline ST<std::string> *funcTable;
-inline ST<int> *globalconst;
-inline ST<std::string> *globalvar;

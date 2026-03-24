@@ -36,11 +36,13 @@ using namespace std;
 %token INT RETURN CONST VOID
 %token <int_val> INT_CONST
 %token <str_val> IDENT
-%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem OptExp ElseOp Optfuncfp Optfuncrp
+%type <ast_val> CompUnit Decl ConstDecl BType ConstDef ConstInitVal VarDecl VarDef InitVal BlockItem 
+%type <ast_val> OptExp ElseOp Optfuncfp Optfuncrp 
 %type <ast_val> FuncDef  Block  Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp FuncFParam FuncFParams FuncRParams
 %token LE GE EQ NE AND OR IF ELSE WHILE BREAK CONTINUE
 %type <op> HelpAdd HelpE HelpR HelpM
-%type <astlist> ConstDefList VarDefList BlockItemList Blockop FuncRlist FuncFlist
+%type <astlist> ConstDefList VarDefList BlockItemList Blockop FuncRlist FuncFlist ConstexpList  ExpList InitList ConstinitList 
+%type <astlist>Optconstexp  Optmulexp Optinit Optconstinit
 %start Root
 
 %%
@@ -95,9 +97,11 @@ OptExp
   }
   ;
 LVal
-  : IDENT {
+  : IDENT Optconstexp {
     auto thisl=new Lval();
     thisl->ident=*($1);
+    if($2)
+        thisl->exp=std::move(*$2);
     $$=thisl;
   }
   ;
@@ -115,6 +119,67 @@ Decl
     $$=thisd;
   }
   ;
+InitList
+  :  InitVal {
+    auto node=new std::vector<std::unique_ptr<Basenode>>;
+    node->push_back(unique_ptr<Basenode>($1));
+    $$=node;
+  }
+  | InitList ',' InitVal {
+    ($1)->push_back(unique_ptr<Basenode>($3));
+    $$=$1;
+  }
+ConstexpList 
+  : '[' ConstExp ']' {
+    auto node=new std::vector<std::unique_ptr<Basenode>>;
+    node->push_back(unique_ptr<Basenode>($2));
+    $$=node;
+  }
+  | ConstexpList '[' ConstExp ']' {
+    ($1)->push_back(unique_ptr<Basenode>($3));
+    $$=$1;
+  }
+  ;
+
+Optconstexp
+  : {$$=nullptr;}
+  | ConstexpList {
+    $$=$1;
+  }
+
+ConstinitList
+  : ConstInitVal {
+    auto node=new std::vector<std::unique_ptr<Basenode>>;
+    node->push_back(unique_ptr<Basenode>($1));
+    $$=node;
+  }
+  | ConstinitList ',' ConstInitVal {
+    ($1)->push_back(unique_ptr<Basenode>($3));
+    $$=$1;
+  }
+  ;
+Optconstinit
+  : {$$=nullptr;}
+  | ConstinitList {
+    $$=$1;
+  }
+  ;
+ExpList
+  : Exp {
+    auto node=new std::vector<std::unique_ptr<Basenode>>;
+    node->push_back(unique_ptr<Basenode>($1));
+    $$=node;
+  }
+  | ExpList Exp {
+    ($1)->push_back(unique_ptr<Basenode>($2));
+    $$=$1;
+  }
+  ;
+Optmulexp
+  : {$$=nullptr;}
+  | ExpList {
+    $$=$1;
+  }
 ConstDefList
   : ConstDef{
     auto node=new std::vector<std::unique_ptr<Basenode>>;
@@ -172,21 +237,36 @@ BType
     $$=thisb;
   }
   ;
-// ConstDef :: = IDENT "=" ConstInitVal;
+//  ConstDef      ::= IDENT {"[" ConstExp "]"} "=" ConstInitVal;
 ConstDef
-  : IDENT '=' ConstInitVal{
+  : IDENT Optconstexp '=' ConstInitVal{
     auto thisc=new Constdef();
     thisc->ident=*($1);
-    thisc->constinit=unique_ptr<Basenode>($3);
+    thisc->constexp=std::move(*$2);
+    thisc->constinit=unique_ptr<Basenode>($4);
     $$=thisc;
   };
-// ConstInitVal :: = ConstExp;
+// ConstInitVal  ::= ConstExp | "{" [ConstInitVal {"," ConstInitVal}] "}";
 ConstInitVal
   : ConstExp {
     auto thisc=new Constinit();
     thisc->cexp=unique_ptr<Basenode>($1);
+    thisc->which=1;
     $$=thisc;
-  };
+  }
+  | '{'  '}' {
+    auto l=new Constinit();
+    l->which=2;
+    $$=l;
+  }
+  | '{' ConstinitList '}' {
+    auto l=new Constinit();
+    l->constinit=std::move(*$2);
+    l->which=2;
+    $$=l;
+  }
+  
+  ;
 // VarDecl :: = BType VarDef { "," VarDef }";";
 VarDecl 
   : BType VarDefList ';' {
@@ -195,28 +275,48 @@ VarDecl
     thisv->vardef=std::move(*$2);
     $$=thisv;
   };
-// VarDef :: = IDENT | IDENT "=" InitVal;
+// VarDef        ::= IDENT {"[" ConstExp "]"}
+//                 | IDENT {"[" ConstExp "]"} "=" InitVal;
 VarDef
-  : IDENT {
+  : IDENT Optconstexp {
     auto thisv=new Vardef();
     thisv->ident=*($1);
+    if($2)
+      thisv->constexp=std::move(*$2);
     thisv->which=1;
     $$=thisv;
   }
-  | IDENT '=' InitVal {
+  | IDENT Optconstexp '=' InitVal {
     auto thisv=new Vardef();
     thisv->ident=*($1);
-    thisv->initval=unique_ptr<Basenode>($3);
+    if($2)
+      thisv->constexp=std::move(*$2);
+    thisv->initval=unique_ptr<Basenode>($4);
     thisv->which=2;
     $$=thisv;
   };
-// InitVal :: = Exp;
+// InitVal       ::= Exp | "{" [InitVal {"," InitVal}] "}";
 InitVal
   : Exp {
     auto thisi=new Initval();
     thisi->exp=unique_ptr<Basenode>($1);
+    thisi->which=1;
     $$=thisi;
-  };
+  }
+  | '{' '}' {
+    auto l=new Initval();
+    l->which=2;
+
+    $$=l;
+  }
+  | '{' InitList '}' {
+    auto l=new Initval();
+    l->which=2;
+    l->initval=std::move(*$2);
+    $$=l;
+  }
+  
+  ;
 // 可选的表达式（0个或1个）
 Optfuncfp
   : /* empty */ {
@@ -271,6 +371,12 @@ FuncFParam
     f->btype=unique_ptr<Basenode>($1);
     f->ident=*($2);
     $$=f;
+  }
+  | BType IDENT '[' ']' Optconstexp {
+    auto f=new Funcfparam();
+    f->btype=unique_ptr<Basenode>($1);
+    f->ident=*($2);
+    f->constexp=std::move(*$5);
   }
 
 

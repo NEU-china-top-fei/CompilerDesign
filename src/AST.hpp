@@ -14,10 +14,15 @@ extern int reg_cnt;
 #define increg() (reg_cnt++)
 #define getreg() (reg_cnt) // 返回当前语句的目标寄存器
 #define decreg(x) (reg_cnt -= x)
+extern ST<int> *constTable;
+extern ST<ele> *varTable;
+extern ST<std::string> *funcTable;
 extern std::vector<std::string> break_tag;
 extern std::vector<std::string> continue_tag;
 extern std::map<std::string, std::string> name2op;
+
 extern int cnt_if;
+extern int cur_offset;
 inline std::string demangle(const char *name)
 {
     int status = 0;
@@ -49,14 +54,16 @@ public:
     virtual bool bdumpcode() { return false; } // return if terminated or has return value
 };
 inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string &opname);
-
+inline int process(int flatten[], Basenode *ci, std::vector<int> &stride, int addition);
+inline void help_array(Basenode *node, bool isconst, bool isglobal);
+inline int process_init(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition);
 inline std::string *process_variable(std::string &temp)
 {
     if (temp.empty())
         return nullptr;
     char prefix = temp.c_str()[0];
     bool isdigit = prefix >= '0' && prefix <= '9';
-    std::string *ret = nullptr;
+    // std::string *ret = nullptr;
     if (prefix == '%')
         return nullptr;
     if (isdigit)
@@ -188,39 +195,138 @@ public:
     std::string t;
     std::string dumpcode()
     {
-        // if (t == "int")
-        // {
-        //     std::cout << "i32";
-        // }
-        // else if (t == "void")
-        // {
-        // }
+
         return t;
     }
 };
-// ConstDef :: = IDENT "=" ConstInitVal;
+
+// get the size(also type) of the array
+inline std::string process_size(std::vector<int> s, bool isparam = false)
+{
+    std::ostringstream os;
+    int num = s.size();
+    for (int i = 0; i < num; i++)
+        os << "[";
+    os << "i32";
+    if (!isparam)
+    {
+        while (!s.empty())
+        {
+            os << ", " << s.back() << "]";
+            s.pop_back();
+        }
+    }
+    else
+    {
+        while (s.size() > 1)
+        {
+            os << ", " << s.back() << "]";
+            s.pop_back();
+        }
+        os << "*";
+    }
+    return os.str();
+}
+inline std::string build_array(int flatten[], std::vector<int> s, int head, int off)
+{
+    int curs = s[head];
+    std::ostringstream os;
+    if (head == s.size() - 1) // one dimentional array
+    {
+        os << "{";
+
+        for (int q = 0; q < curs; q++)
+        {
+            os << flatten[off + q];
+            if (q != curs - 1)
+                os << ", ";
+        }
+        os << "}";
+    }
+    else
+    {
+        os << "{";
+        for (int i = 0; i < curs; i++)
+        {
+            os << build_array(flatten, s, head + 1, off + curs);
+            if (i != curs - 1)
+            {
+                os << ", ";
+            }
+        }
+        os << "}";
+    }
+    return os.str();
+}
+// ConstDef      ::= IDENT {"[" ConstExp "]"} "=" ConstInitVal;
 class Constdef : public Basenode
 {
 public:
     std::string ident;
     std::unique_ptr<Basenode> constinit;
+    std::vector<std::unique_ptr<Basenode>> constexp;
     std::string dumpcode(bool isglobal)
     {
-
-        constinit->dumpcode(ident, isglobal);
+        if (constexp.empty())
+            constinit->dumpcode(ident, isglobal);
+        else
+        {
+            // int overallsize = 1;
+            // std::vector<int> stride;
+            // std::vector<int> detailsize;
+            // for (auto i = constexp.begin(); i != constexp.end(); i++)
+            // {
+            //     int temp = (*i)->cal();
+            //     stride.push_back(overallsize); // from small to big
+            //     overallsize = overallsize * temp;
+            //     detailsize.push_back(temp);
+            // }
+            // int flatten[overallsize] = {0};
+            // process(flatten, constinit, 0);
+            // int dim = detailsize.size();
+            // std::string size_val = process_size(detailsize);
+            // if (isglobal)
+            // {
+            //     std::cout << "global %" << ident << " = alloc " << size_val << ", " << build_array(flatten, detailsize, 0, 0) << std::endl;
+            // }
+            // else
+            // {
+            //     std::cout << "%" << ident << " = alloc " << size_val << std::endl;
+            //     std::string source = ident, target = std::to_string(getreg());
+            //     increg();
+            //     for (int i = 0; i < overallsize; i++)
+            //     {
+            //         int pos, rest = i;
+            //         for (int j = 0; j < dim; j++)
+            //         {
+            //             pos = rest % stride[n - 1 - j];
+            //             rest /= stride[n - 1 - j];
+            //             std::cout << "    %" << target << " = getelemptr %" << source << ", " << pos << std::endl;
+            //             source = target;
+            //             target = std::to_string(getreg());
+            //             increg();
+            //         }
+            //         std::cout << "    store " << flatten[i] << ", %" << source << std::endl;
+            //     }
+            // }
+            help_array(this, true, isglobal);
+        }
         return "";
     }
 };
-// ConstInitVal :: = ConstExp;
+
+// ConstInitVal  ::= ConstExp | "{" [ConstInitVal {"," ConstInitVal}] "}";
 class Constinit : public Basenode
 {
 public:
     std::unique_ptr<Basenode> cexp;
+    int which;
+    std::vector<std::unique_ptr<Basenode>> constinit;
     std::string dumpcode(std::string &ident, bool isglobal)
     {
         int result = cexp->cal();
         if (isglobal)
-            globalconst->add(ident, result);
+            constTable->add_global(ident, result);
         else
             constTable->add(ident, result);
         return std::to_string(result);
@@ -241,54 +347,71 @@ public:
         return "";
     }
 };
-// VarDef :: = IDENT | IDENT "=" InitVal;
+// > VarDef        ::= IDENT {"[" ConstExp "]"}
+// >                 | IDENT {"[" ConstExp "]"} "=" InitVal;
 class Vardef : public Basenode
 {
 public:
     std::string ident;
+    std::vector<std::unique_ptr<Basenode>> constexp;
     std::unique_ptr<Basenode> initval;
     int which;
     std::string dumpcode(Basenode *btype, bool isglobal)
     {
+        bool isarray = !constexp.empty();
         std::string dis_tag = std::to_string(varTable->getcnt());
         std::string temp = "";
-        if (which == 2)
-            temp = initval->dumpcode();
-        if (isglobal)
+        if (!isarray)
         {
-            std::cout << "    global %" << ident << dis_tag << "  = alloc " << btype->dumpcode();
-
-            if (which == 2)
+            if (isglobal)
             {
-                std::cout << " , " << temp << std::endl;
+
+                std::cout << "global %" << ident << dis_tag << "  = alloc " << btype->dumpcode();
+
+                if (which == 2)
+                {
+                    int val = initval->cal();
+                    temp = std::to_string(val);
+                    std::cout << " , " << temp << std::endl;
+                }
+                else
+                {
+                    std::cout << " , zeroinit" << std::endl;
+                }
+                ele newe;
+                newe.val = ident + dis_tag;
+                newe.is_ptr = true;
+                varTable->add_global(ident, newe);
             }
             else
             {
-                std::cout << " , zeroinit" << std::endl;
+                std::cout << "    %" << ident << dis_tag << "  = alloc " << btype->dumpcode() << std::endl;
+                ele new_e;
+                new_e.is_ptr = true;
+                new_e.val = ident + dis_tag;
+                varTable->add(ident, new_e);
+                temp = initval->dumpcode();
+                if (which == 2)
+                    std::cout << "    store " << temp << ", %" << new_e.val << std::endl;
             }
-            globalvar->add(ident, ident + dis_tag);
         }
         else
         {
-            std::cout << "    %" << ident << dis_tag << "  = alloc " << btype->dumpcode() << std::endl;
-            ele new_e;
-            new_e.is_ptr = true;
-            new_e.val = ident + dis_tag;
-            varTable->add(ident, new_e);
-            if (which == 2)
-                std::cout << "    store " << temp << ", %" << new_e.val << std::endl;
+            help_array(this, false, isglobal);
         }
-
         return "";
     }
 };
-// InitVal :: = Exp;
+// InitVal :: = Exp | "{"[InitVal{"," InitVal}] "}";
 class Initval : public Basenode
 {
 public:
     std::unique_ptr<Basenode> exp;
+    int which;
+    std::vector<std::unique_ptr<Basenode>> initval;
     std::string dumpcode()
     {
+
         return exp->dumpcode();
     }
     int cal()
@@ -314,7 +437,7 @@ public:
     }
     std::string dumpcode()
     {
-
+        setreg();
         std::cout << "fun @" << ident << "(";
         varTable = varTable->enter_scope();
         if (funcfparams != nullptr)
@@ -365,19 +488,34 @@ public:
         return "";
     }
 };
-// FuncFParam :: = BType IDENT;
+// FuncFParam    ::= BType IDENT ["[" "]" {"[" ConstExp "]"}];
 class Funcfparam : public Basenode
 {
 public:
     std::unique_ptr<Basenode> btype;
     std::string ident;
+    std::vector<std::unique_ptr<Basenode>> constexp;
     std::string dumpcode()
     {
         std::cout << "%" << ident;
-        std::string temp = btype->dumpcode();
-        if (temp != "")
-            std::cout << " : " << temp;
-        return ident;
+        if (constexp.empty())
+        {
+            std::string temp = btype->dumpcode();
+            if (temp != "")
+                std::cout << " : " << temp;
+            return ident;
+        }
+        else
+        {
+            std::vector<int> t;
+            int sizec = constexp.size();
+            for (int i = 0; i < sizec; i++)
+            {
+                t.push_back(constexp[i]->cal());
+            }
+            std::cout << " : " << process_size(t, true);
+        }
+        return "";
     }
 };
 //  Block         ::= "{" {BlockItem} "}";
@@ -411,11 +549,12 @@ public:
     int which;
     bool bdumpcode()
     {
-        // //std::cerr << "Processing BlockItem! which = " << which << std::endl; // 重点打印 which
+        // std::cerr << "--- Processing BlockItem which=" << which << " ---" << std::endl;
+
         switch (which)
         {
         case 1:
-            decl->dumpcode();
+            decl->dumpcode(false);
             break;
         case 2:
         {
@@ -560,6 +699,7 @@ public:
         }
         break;
         }
+        return false;
     }
 };
 
@@ -596,40 +736,80 @@ public:
         return loexp->cal();
     }
 };
-
+// LVal          ::= IDENT {"[" Exp "]"};
 class Lval : public Basenode
 {
 public:
     std::string ident;
+    std::vector<std::unique_ptr<Basenode>> exp;
     std::string addr()
     {
         return std::string("%") + (varTable->find(ident))->val;
     }
+    int cal()
+    {
+        auto i = constTable->find(ident);
+        return *i;
+    }
     std::string dumpcode(bool is_addr)
     {
-        if (is_addr)
+        if (exp.empty())
         {
-            return std::string("%") + (varTable->find(ident))->val;
-        }
-
-        auto c = constTable->find(ident);
-        if (c != nullptr)
-            return std::to_string(*c);
-
-        auto v = varTable->find(ident);
-        if (v != nullptr)
-        {
-            if (v->is_ptr)
+            if (is_addr)
             {
-                std::string reg = "%" + std::to_string(getreg());
-                std::cout << "    " << reg << " = load %" << v->val << std::endl;
-                increg();
-                return reg;
+                return std::string("%") + (varTable->find(ident))->val;
             }
-            else
-                return "%" + v->val;
+
+            auto c = constTable->find(ident);
+            if (c != nullptr)
+                return std::to_string(*c);
+
+            auto v = varTable->find(ident);
+            if (v != nullptr)
+            {
+                if (v->is_ptr)
+                {
+                    std::string reg = "%" + std::to_string(getreg());
+                    std::cout << "    " << reg << " = load %" << v->val << std::endl;
+                    increg();
+                    return reg;
+                }
+                else
+                    return "%" + v->val;
+            }
+            return "0";
         }
-        return "0";
+        else
+        {
+            auto v = varTable->find(ident);
+            std::string target = "", source = "%" + v->val;
+            for (const auto &i : exp)
+            {
+                target = "%" + std::to_string(getreg());
+                increg();
+                std::string temp = i->dumpcode();
+                // if (process_variable(temp))
+                // {
+                //     std::cout << "    %" << getreg() << " = load %" << (varTable->find(temp))->val << std::endl;
+                //     std::cout << "    " << target << " = getelemptr " << source << " ,%" << getreg() << std::endl;
+                //     increg();
+                // }
+                // else
+                // {
+                //     std::cout << "    " << target << " = getelemptr " << source << " , " << temp << std::endl;
+                // }
+                std::cout << "    " << target << " = getelemptr " << source << " , " << temp << std::endl;
+                source = target;
+            }
+            if (!is_addr)
+            {
+                std::string ret_reg = "%" + std::to_string(getreg());
+                increg();
+                std::cout << "    " << ret_reg << " = load " << source << std::endl;
+                return ret_reg;
+            }
+            return source;
+        }
     }
 };
 // PrimaryExp    ::= "(" Exp ")" | LVal | Number;
@@ -709,7 +889,7 @@ public:
             }
             else
                 std::cout << "    call @" << ident << "(" << args << ")" << std::endl;
-            increg();
+            // increg();
 
             return reg;
         }
@@ -1109,7 +1289,7 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     { auto n = std::make_unique<Number>(); n->num = "1"; return n; };
     auto result = std::make_unique<Vardecl>(); // int result=
     auto bt = std::make_unique<Btype>();
-    bt->t = "int";
+    bt->t = "i32";
     result->btype = std::move(bt);
     auto def = std::make_unique<Vardef>();
     def->ident = res;
@@ -1164,4 +1344,199 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     increg();
 
     return reg; // 完美返回寄存器
+}
+
+// get the whole initial array
+inline int process_init(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition)
+{
+    int startoffset = cur_offset;
+    Initval *i = dynamic_cast<Initval *>(ci);
+    if (!i)
+        return cur_offset;
+
+    if (i->which == 1)
+    {
+        flatten[cur_offset++] = i->cal();
+        return cur_offset;
+    }
+    else
+    {
+        auto &l = i->initval;
+        int cur_dim = 0;
+        for (auto &q : l)
+        {
+            Initval *item = dynamic_cast<Initval *>(q.get());
+            if (item && item->which == 1)
+            {
+                flatten[cur_offset++] = item->cal();
+            }
+            else if (item)
+            {
+                int ls = stride.size();
+                for (int s = ls - 1; s >= 0; s--)
+                {
+                    if (cur_offset % stride[s] == 0)
+                    {
+                        cur_dim = stride[s];
+                        break;
+                    }
+                }
+                cur_offset = process_init(flatten, item, stride, cur_dim);
+            }
+        }
+    }
+    return startoffset + addition;
+}
+inline int process(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition)
+{
+    int startoffset = cur_offset;
+    Constinit *i = dynamic_cast<Constinit *>(ci);
+    if (!i)
+        return cur_offset;
+
+    if (i->which == 1)
+    {
+        flatten[cur_offset++] = i->cal();
+        return cur_offset;
+    }
+    else
+    {
+        auto &l = i->constinit;
+        int cur_dim = 0;
+        for (auto &q : l)
+        {
+            Constinit *item = dynamic_cast<Constinit *>(q.get());
+            if (item && item->which == 1)
+            {
+                flatten[cur_offset++] = item->cal();
+            }
+            else if (item)
+            {
+                int ls = stride.size();
+                for (int s = ls - 1; s >= 0; s--)
+                {
+                    if (cur_offset % stride[s] == 0)
+                    {
+                        cur_dim = stride[s];
+                        break;
+                    }
+                }
+                cur_offset = process(flatten, item, stride, cur_dim);
+            }
+        }
+    }
+    return startoffset + addition;
+}
+// int process(int flatten[], Basenode *ci, std::vector<int> &stride, int addition)
+// {
+//     int startoffset = cur_offset;
+//     auto i = reinterpret_cast<Constinit *>(ci);
+//     if (i->which == 1)
+//     {
+//         flatten[cur_offset++] = ci->cal();
+//         return cur_offset;
+//     }
+//     else
+//     {
+//         auto l = ci->constinit;
+//         int cur_dim = 0;
+//         for (auto q = l.begin(); q != l.end(); q++)
+//         {
+//             auto item = static_cast<Constinit *>(q.get()); // static or reinterpret
+//             if (item->which == 1)
+//             {
+//                 flatten[cur_offset++] = item->cal();
+//             }
+//             else
+//             {
+//                 int ls = stride.size();
+//                 for (int s = ls - 1; s >= 0; s--)
+//                 {
+//                     if (cur_offset % stride[s] == 0)
+//                     {
+//                         cur_dim = stride[s];
+//                         break;
+//                     }
+//                 }
+//                 cur_offset = process(flatten, *q, stride, cur_dim);
+//             }
+//         }
+//     }
+//     return startoffset + addition;
+// }
+inline void help_array(Basenode *node, bool isconst, bool isglobal)
+{
+    std::string ident;
+    Basenode *init;
+    std::vector<std::unique_ptr<Basenode>> const *exp = nullptr;
+    if (isconst)
+    {
+        auto n = reinterpret_cast<Constdef *>(node);
+        ident = n->ident;
+        init = (n->constinit).get();
+        exp = &(n->constexp);
+    }
+    else
+    {
+        auto n = reinterpret_cast<Vardef *>(node);
+        ident = n->ident;
+        init = (n->initval).get();
+        exp = &(n->constexp);
+    }
+    std::string dis_tag = std::to_string(varTable->getcnt());
+    std::string mapped_name = ident + dis_tag;
+    ele new_e;
+    new_e.is_ptr = true;
+    new_e.val = mapped_name;
+    if (isglobal)
+        varTable->add_global(ident, new_e);
+    else
+        varTable->add(ident, new_e);
+    int overallsize = 1;
+    std::vector<int> stride;
+    std::vector<int> detailsize;
+    for (auto i = exp->begin(); i != exp->end(); i++)
+    {
+        int temp = (*i)->cal();
+        stride.push_back(overallsize); // from small to big
+        overallsize = overallsize * temp;
+        detailsize.push_back(temp);
+    }
+    std::vector<int> flatten(overallsize, 0);
+    // process(flatten, init, stride, 0);
+    if (init != nullptr)
+    {
+        if (isconst)
+            process(flatten, init, stride, 0);
+        else
+            process_init(flatten, init, stride, 0);
+    }
+    int dim = detailsize.size();
+    std::string size_val = process_size(detailsize);
+    if (isglobal)
+    {
+        std::cout << "global %" << ident << " = alloc " << size_val;
+        std::cout << ", " << build_array(flatten.data(), detailsize, 0, 0) << std::endl;
+    }
+    else
+    {
+        std::cout << "%" << mapped_name << " = alloc " << size_val << std::endl;
+        std::string source, target = std::to_string(getreg());
+        increg();
+        for (int i = 0; i < overallsize; i++)
+        {
+            int pos, rest = i;
+            source = mapped_name;
+            for (int j = 0; j < dim; j++)
+            {
+                pos = (i / stride[j]) % detailsize[j];
+                rest /= stride[dim - 1 - j];
+                std::cout << "    %" << target << " = getelemptr %" << source << ", " << pos << std::endl;
+                source = target;
+                target = std::to_string(getreg());
+                increg();
+            }
+            std::cout << "    store " << flatten[i] << ", %" << source << std::endl;
+        }
+    }
 }
