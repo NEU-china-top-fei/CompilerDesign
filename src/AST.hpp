@@ -49,7 +49,7 @@ public:
     virtual std::string dumpcode(std::string &ident, bool isglobal) { return std::string(""); }
     virtual std::string dumpcode(Basenode *btype, bool isglobal) { return std::string(""); }
     virtual std::string dumpcode(bool judge) { return std::string(""); } // true for global when comes to value
-    virtual int cal() { return 0; }
+    virtual int cal() { return 0; }                                      // 编译期求值
     virtual std::string addr() { return std::string(""); }
     virtual bool bdumpcode() { return false; } // return if terminated or has return value
 };
@@ -57,13 +57,17 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
 inline int process(int flatten[], Basenode *ci, std::vector<int> &stride, int addition);
 inline void help_array(Basenode *node, bool isconst, bool isglobal);
 inline int process_init(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition);
+/**
+ * given a string,
+ *judge if immediate(e.g:9),register(%),or defined (const)variable
+ * return variable name
+ */
 inline std::string *process_variable(std::string &temp)
 {
     if (temp.empty())
         return nullptr;
     char prefix = temp.c_str()[0];
     bool isdigit = prefix >= '0' && prefix <= '9';
-    // std::string *ret = nullptr;
     if (prefix == '%')
         return nullptr;
     if (isdigit)
@@ -71,47 +75,26 @@ inline std::string *process_variable(std::string &temp)
     auto c = constTable->find(temp);
     if (c)
     {
-        temp = std::to_string(*c);
-        return nullptr;
+        return new std::string(std::to_string(*c));
     }
 
     auto v = varTable->find(temp);
     if (v == nullptr)
         return nullptr;
-
-    if (v->is_ptr)
+    if (!v->is_ptr)
         return &(v->val);
 
     return nullptr;
 }
-// int result = 1;
-// if (lhs == 0) {
-//   result = rhs != 0;
-// }
-// or
-
-// int result=0;
-//  if(lhs==1){result= rhs!=0}
-//
-
+/**
+ * helper method for binary operator
+ * return the register of result
+ */
 inline std::string help_tri(Basenode *n1, Basenode *n2, const std::string &opname)
 {
     std::string str1 = n1->dumpcode();
     std::string str2 = n2->dumpcode();
     std::string op = name2op[opname];
-
-    // if (op == "and" || op == "or")
-    // {
-    //     int first = getreg();
-    //     increg();
-    //     int second = getreg();
-    //     increg();
-    //     std::cout << "    %" << first << " = ne " << str1 << " ,0" << std::endl;
-    //     std::cout << "    %" << second << " = ne " << str2 << " ,0" << std::endl;
-    //     str1 = "%" + std::to_string(first);
-    //     str2 = "%" + std::to_string(second);
-    // }
-
     std::string temp = "%" + std::to_string(getreg());
     increg();
 
@@ -137,14 +120,12 @@ public:
 
         if (compunit != nullptr)
         {
-            // std::cerr << "type called " << demangle(typeid(*this).name()) << " if comp " << std::endl;
             compunit->dumpcode();
         }
         if (which == 1)
             decl->dumpcode(true);
         else
         {
-            // std::cerr << "good" << std::endl;
             func_def->dumpcode();
         }
         return "";
@@ -165,7 +146,6 @@ public:
         case 1:
             constde->dumpcode(isglobal);
             break;
-
         case 2:
             varde->dumpcode(isglobal);
             break;
@@ -200,11 +180,21 @@ public:
     }
 };
 
-// get the size(also type) of the array
+/**
+ * input:the size represented by array,if it's function params
+ * output:
+ *      [[i32,3],2]
+ *      *[i32,3]
+ */
 inline std::string process_size(std::vector<int> s, bool isparam = false)
 {
     std::ostringstream os;
     int num = s.size();
+    if (isparam)
+    {
+        os << "*";
+        num--;
+    }
     for (int i = 0; i < num; i++)
         os << "[";
     os << "i32";
@@ -218,12 +208,12 @@ inline std::string process_size(std::vector<int> s, bool isparam = false)
     }
     else
     {
+
         while (s.size() > 1)
         {
             os << ", " << s.back() << "]";
             s.pop_back();
         }
-        os << "*";
     }
     return os.str();
 }
@@ -271,44 +261,7 @@ public:
             constinit->dumpcode(ident, isglobal);
         else
         {
-            // int overallsize = 1;
-            // std::vector<int> stride;
-            // std::vector<int> detailsize;
-            // for (auto i = constexp.begin(); i != constexp.end(); i++)
-            // {
-            //     int temp = (*i)->cal();
-            //     stride.push_back(overallsize); // from small to big
-            //     overallsize = overallsize * temp;
-            //     detailsize.push_back(temp);
-            // }
-            // int flatten[overallsize] = {0};
-            // process(flatten, constinit, 0);
-            // int dim = detailsize.size();
-            // std::string size_val = process_size(detailsize);
-            // if (isglobal)
-            // {
-            //     std::cout << "global %" << ident << " = alloc " << size_val << ", " << build_array(flatten, detailsize, 0, 0) << std::endl;
-            // }
-            // else
-            // {
-            //     std::cout << "%" << ident << " = alloc " << size_val << std::endl;
-            //     std::string source = ident, target = std::to_string(getreg());
-            //     increg();
-            //     for (int i = 0; i < overallsize; i++)
-            //     {
-            //         int pos, rest = i;
-            //         for (int j = 0; j < dim; j++)
-            //         {
-            //             pos = rest % stride[n - 1 - j];
-            //             rest /= stride[n - 1 - j];
-            //             std::cout << "    %" << target << " = getelemptr %" << source << ", " << pos << std::endl;
-            //             source = target;
-            //             target = std::to_string(getreg());
-            //             increg();
-            //         }
-            //         std::cout << "    store " << flatten[i] << ", %" << source << std::endl;
-            //     }
-            // }
+
             help_array(this, true, isglobal);
         }
         return "";
@@ -788,16 +741,6 @@ public:
                 target = "%" + std::to_string(getreg());
                 increg();
                 std::string temp = i->dumpcode();
-                // if (process_variable(temp))
-                // {
-                //     std::cout << "    %" << getreg() << " = load %" << (varTable->find(temp))->val << std::endl;
-                //     std::cout << "    " << target << " = getelemptr " << source << " ,%" << getreg() << std::endl;
-                //     increg();
-                // }
-                // else
-                // {
-                //     std::cout << "    " << target << " = getelemptr " << source << " , " << temp << std::endl;
-                // }
                 std::cout << "    " << target << " = getelemptr " << source << " , " << temp << std::endl;
                 source = target;
             }
@@ -1427,43 +1370,7 @@ inline int process(std::vector<int> &flatten, Basenode *ci, std::vector<int> &st
     }
     return startoffset + addition;
 }
-// int process(int flatten[], Basenode *ci, std::vector<int> &stride, int addition)
-// {
-//     int startoffset = cur_offset;
-//     auto i = reinterpret_cast<Constinit *>(ci);
-//     if (i->which == 1)
-//     {
-//         flatten[cur_offset++] = ci->cal();
-//         return cur_offset;
-//     }
-//     else
-//     {
-//         auto l = ci->constinit;
-//         int cur_dim = 0;
-//         for (auto q = l.begin(); q != l.end(); q++)
-//         {
-//             auto item = static_cast<Constinit *>(q.get()); // static or reinterpret
-//             if (item->which == 1)
-//             {
-//                 flatten[cur_offset++] = item->cal();
-//             }
-//             else
-//             {
-//                 int ls = stride.size();
-//                 for (int s = ls - 1; s >= 0; s--)
-//                 {
-//                     if (cur_offset % stride[s] == 0)
-//                     {
-//                         cur_dim = stride[s];
-//                         break;
-//                     }
-//                 }
-//                 cur_offset = process(flatten, *q, stride, cur_dim);
-//             }
-//         }
-//     }
-//     return startoffset + addition;
-// }
+
 inline void help_array(Basenode *node, bool isconst, bool isglobal)
 {
     std::string ident;

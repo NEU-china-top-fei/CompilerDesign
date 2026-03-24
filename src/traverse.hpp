@@ -210,7 +210,6 @@ void visit(const koopa_raw_function_t &function)
     std::string name = std::string(function->name);
     int length = name.size();
     int frame_size = 0, sentence = function->bbs.len;
-    bool iscall = false;
     for (size_t i = 0; i < function->bbs.len; i++)
     {
         auto bb = reinterpret_cast<koopa_raw_basic_block_t>(function->bbs.buffer[i]);
