@@ -8,12 +8,13 @@
 #include "ST.hpp"
 #include <vector>
 #include <type_traits> // 包含 std::is_same_v 和 std::decay_t
+
 extern int reg_cnt;
-// extern bool if_terminate;
 #define setreg() (reg_cnt = 0)
 #define increg() (reg_cnt++)
 #define getreg() (reg_cnt) // 返回当前语句的目标寄存器
 #define decreg(x) (reg_cnt -= x)
+
 extern ST<int> *constTable;
 extern ST<ele> *varTable;
 extern ST<std::string> *funcTable;
@@ -22,7 +23,7 @@ extern std::vector<std::string> continue_tag;
 extern std::map<std::string, std::string> name2op;
 
 extern int cnt_if;
-extern int cur_offset;
+
 inline std::string demangle(const char *name)
 {
     int status = 0;
@@ -31,35 +32,27 @@ inline std::string demangle(const char *name)
         std::free};
     return (status == 0) ? res.get() : name;
 }
+
 class Basenode
 {
 public:
     virtual ~Basenode() = default;
-    virtual void dump() {
-
-    };
-    virtual std::string dumpcode()
-    { // 返回立即数或者寄存器值或者变量的ident
-        return std::string("");
-    };
-    virtual std::string retop()
-    {
-        return std::string("");
-    };
+    virtual void dump() {};
+    virtual std::string dumpcode() { return std::string(""); };
+    virtual std::string retop() { return std::string(""); };
     virtual std::string dumpcode(std::string &ident, bool isglobal) { return std::string(""); }
     virtual std::string dumpcode(Basenode *btype, bool isglobal) { return std::string(""); }
-    virtual std::string dumpcode(bool judge) { return std::string(""); } // true for global when comes to value
-    virtual int cal() { return 0; }                                      // 编译期求值
+    virtual std::string dumpcode(bool judge) { return std::string(""); }
+    virtual int cal() { return 0; }
     virtual std::string addr() { return std::string(""); }
-    virtual bool bdumpcode() { return false; } // return if terminated or has return value
+    virtual bool bdumpcode() { return false; }
 };
+
 inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string &opname);
-inline int process(int flatten[], Basenode *ci, std::vector<int> &stride, int addition);
-inline void help_array(Basenode *node, bool isconst, bool isglobal);
-inline int process_init(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition);
+
 /**
  * given a string,
- *judge if immediate(e.g:9),register(%),or defined (const)variable
+ * judge if immediate(e.g:9),register(%),or defined (const)variable
  * return variable name
  */
 inline std::string *process_variable(std::string &temp)
@@ -86,6 +79,7 @@ inline std::string *process_variable(std::string &temp)
 
     return nullptr;
 }
+
 /**
  * helper method for binary operator
  * return the register of result
@@ -101,7 +95,7 @@ inline std::string help_tri(Basenode *n1, Basenode *n2, const std::string &opnam
     std::cout << "    " << temp << " = " << op << " " << str1 << " , " << str2 << std::endl;
     return temp;
 }
-// CompUnit      ::= [CompUnit] (Decl | FuncDef);
+
 class CompUnit : public Basenode
 {
 public:
@@ -117,7 +111,6 @@ public:
     }
     std::string dumpcode()
     {
-
         if (compunit != nullptr)
         {
             compunit->dumpcode();
@@ -132,7 +125,6 @@ public:
     }
 };
 
-// Decl          ::= ConstDecl | VarDecl;
 class Decl : public Basenode
 {
 public:
@@ -153,7 +145,7 @@ public:
         return "";
     }
 };
-// ConstDecl     ::= "const" BType ConstDef {"," ConstDef} ";";
+
 class ConstDecl : public Basenode
 {
 public:
@@ -168,113 +160,35 @@ public:
         return "";
     }
 };
-// BType         ::= "int"| "void";
+
 class Btype : public Basenode
 {
 public:
     std::string t;
     std::string dumpcode()
     {
-
         return t;
     }
 };
 
-/**
- * input:the size represented by array,if it's function params
- * output:
- *      [[i32,3],2]
- *      *[i32,3]
- */
-inline std::string process_size(std::vector<int> s, bool isparam = false)
-{
-    std::ostringstream os;
-    int num = s.size();
-    if (isparam)
-    {
-        os << "*";
-        num--;
-    }
-    for (int i = 0; i < num; i++)
-        os << "[";
-    os << "i32";
-    if (!isparam)
-    {
-        while (!s.empty())
-        {
-            os << ", " << s.back() << "]";
-            s.pop_back();
-        }
-    }
-    else
-    {
-
-        while (s.size() > 1)
-        {
-            os << ", " << s.back() << "]";
-            s.pop_back();
-        }
-    }
-    return os.str();
-}
-inline std::string build_array(int flatten[], std::vector<int> s, int head, int off)
-{
-    int curs = s[head];
-    std::ostringstream os;
-    if (head == s.size() - 1) // one dimentional array
-    {
-        os << "{";
-
-        for (int q = 0; q < curs; q++)
-        {
-            os << flatten[off + q];
-            if (q != curs - 1)
-                os << ", ";
-        }
-        os << "}";
-    }
-    else
-    {
-        os << "{";
-        for (int i = 0; i < curs; i++)
-        {
-            os << build_array(flatten, s, head + 1, off + curs);
-            if (i != curs - 1)
-            {
-                os << ", ";
-            }
-        }
-        os << "}";
-    }
-    return os.str();
-}
-// ConstDef      ::= IDENT {"[" ConstExp "]"} "=" ConstInitVal;
 class Constdef : public Basenode
 {
 public:
     std::string ident;
     std::unique_ptr<Basenode> constinit;
-    std::vector<std::unique_ptr<Basenode>> constexp;
+
     std::string dumpcode(bool isglobal)
     {
-        if (constexp.empty())
-            constinit->dumpcode(ident, isglobal);
-        else
-        {
-
-            help_array(this, true, isglobal);
-        }
+        constinit->dumpcode(ident, isglobal);
         return "";
     }
 };
 
-// ConstInitVal  ::= ConstExp | "{" [ConstInitVal {"," ConstInitVal}] "}";
 class Constinit : public Basenode
 {
 public:
     std::unique_ptr<Basenode> cexp;
-    int which;
-    std::vector<std::unique_ptr<Basenode>> constinit;
+
     std::string dumpcode(std::string &ident, bool isglobal)
     {
         int result = cexp->cal();
@@ -285,7 +199,7 @@ public:
         return std::to_string(result);
     }
 };
-// VarDecl :: = BType VarDef { "," VarDef }";";
+
 class Vardecl : public Basenode
 {
 public:
@@ -300,71 +214,64 @@ public:
         return "";
     }
 };
-// > VarDef        ::= IDENT {"[" ConstExp "]"}
-// >                 | IDENT {"[" ConstExp "]"} "=" InitVal;
+
 class Vardef : public Basenode
 {
 public:
     std::string ident;
-    std::vector<std::unique_ptr<Basenode>> constexp;
     std::unique_ptr<Basenode> initval;
     int which;
+
     std::string dumpcode(Basenode *btype, bool isglobal)
     {
-        bool isarray = !constexp.empty();
         std::string dis_tag = std::to_string(varTable->getcnt());
+        std::string mapped_name = ident + dis_tag;
         std::string temp = "";
-        if (!isarray)
+
+        if (isglobal)
         {
-            if (isglobal)
+            std::cout << "global %" << mapped_name << "  = alloc " << btype->dumpcode();
+
+            if (which == 2)
             {
-
-                std::cout << "global %" << ident << dis_tag << "  = alloc " << btype->dumpcode();
-
-                if (which == 2)
-                {
-                    int val = initval->cal();
-                    temp = std::to_string(val);
-                    std::cout << " , " << temp << std::endl;
-                }
-                else
-                {
-                    std::cout << " , zeroinit" << std::endl;
-                }
-                ele newe;
-                newe.val = ident + dis_tag;
-                newe.is_ptr = true;
-                varTable->add_global(ident, newe);
+                int val = initval->cal();
+                temp = std::to_string(val);
+                std::cout << " , " << temp << std::endl;
             }
             else
             {
-                std::cout << "    %" << ident << dis_tag << "  = alloc " << btype->dumpcode() << std::endl;
-                ele new_e;
-                new_e.is_ptr = true;
-                new_e.val = ident + dis_tag;
-                varTable->add(ident, new_e);
-                temp = initval->dumpcode();
-                if (which == 2)
-                    std::cout << "    store " << temp << ", %" << new_e.val << std::endl;
+                std::cout << " , zeroinit" << std::endl;
             }
+            ele newe;
+            newe.val = mapped_name;
+            newe.is_ptr = true;
+            varTable->add_global(ident, newe);
         }
         else
         {
-            help_array(this, false, isglobal);
+            std::cout << "    %" << mapped_name << "  = alloc " << btype->dumpcode() << std::endl;
+            ele new_e;
+            new_e.is_ptr = true;
+            new_e.val = mapped_name;
+            varTable->add(ident, new_e);
+
+            if (which == 2)
+            {
+                temp = initval->dumpcode();
+                std::cout << "    store " << temp << ", %" << new_e.val << std::endl;
+            }
         }
         return "";
     }
 };
-// InitVal :: = Exp | "{"[InitVal{"," InitVal}] "}";
+
 class Initval : public Basenode
 {
 public:
     std::unique_ptr<Basenode> exp;
-    int which;
-    std::vector<std::unique_ptr<Basenode>> initval;
+
     std::string dumpcode()
     {
-
         return exp->dumpcode();
     }
     int cal()
@@ -372,7 +279,7 @@ public:
         return exp->cal();
     }
 };
-//  FuncDef       ::= btype IDENT "(" [FuncFParams] ")" Block;
+
 class Funcdef : public Basenode
 {
 public:
@@ -396,30 +303,33 @@ public:
         if (funcfparams != nullptr)
             funcfparams->dumpcode();
         std::cout << ")";
+
         std::string temp = func_type->dumpcode();
         if (temp != "")
             std::cout << ": " << temp;
         funcTable->add(ident, temp);
+
         std::cout << " {" << std::endl;
         std::cout << "%entry:" << std::endl;
+
         bool ret = false;
         if (block != nullptr)
             ret = block->bdumpcode();
+
         if (!ret)
         {
             std::cout << "    ret ";
-            if (func_type->dumpcode() == "i32")
+            if (temp == "i32")
                 std::cout << "0";
+            std::cout << std::endl;
         }
 
-        std::cout << std::endl
-                  << "}" << std::endl;
+        std::cout << "}" << std::endl;
         varTable = varTable->parent;
         return "";
     }
 };
 
-// FuncFParams :: = FuncFParam{"," FuncFParam};
 class Funcfparams : public Basenode
 {
 public:
@@ -441,38 +351,20 @@ public:
         return "";
     }
 };
-// FuncFParam    ::= BType IDENT ["[" "]" {"[" ConstExp "]"}];
+
 class Funcfparam : public Basenode
 {
 public:
     std::unique_ptr<Basenode> btype;
     std::string ident;
-    std::vector<std::unique_ptr<Basenode>> constexp;
+
     std::string dumpcode()
     {
-        std::cout << "%" << ident;
-        if (constexp.empty())
-        {
-            std::string temp = btype->dumpcode();
-            if (temp != "")
-                std::cout << " : " << temp;
-            return ident;
-        }
-        else
-        {
-            std::vector<int> t;
-            int sizec = constexp.size();
-            for (int i = 0; i < sizec; i++)
-            {
-                t.push_back(constexp[i]->cal());
-            }
-            std::cout << " : " << process_size(t, true);
-        }
-        return "";
+        std::cout << "%" << ident << " : " << btype->dumpcode();
+        return ident;
     }
 };
-//  Block         ::= "{" {BlockItem} "}";
-//  BlockItem     ::= Decl | Stmt;
+
 class Block : public Basenode
 {
 public:
@@ -484,7 +376,6 @@ public:
         bool isret = false;
         for (auto i = blockitem.begin(); i != blockitem.end(); i++)
         {
-            // //std::cerr << "Processing BlockItem!" << std::endl; // 埋点
             isret = isret || (*i)->bdumpcode();
             if (isret)
                 break;
@@ -494,6 +385,7 @@ public:
         return isret;
     }
 };
+
 class BlockItem : public Basenode
 {
 public:
@@ -502,32 +394,18 @@ public:
     int which;
     bool bdumpcode()
     {
-        // std::cerr << "--- Processing BlockItem which=" << which << " ---" << std::endl;
-
         switch (which)
         {
         case 1:
             decl->dumpcode(false);
             break;
         case 2:
-        {
-            bool as = stmt->bdumpcode();
-            return as;
-            break;
-        }
+            return stmt->bdumpcode();
         }
         return false;
     }
 };
-// Stmt          ::= LVal "=" Exp ";"
-//                 | [Exp] ";"
-//                 | Block
-//                 | "return" [Exp] ";";
-//                 | "if" "(" Exp ")" Stmt ["else" Stmt]
-//                 | "while" "(" Exp ")" Stmt
-//                 | "break" ";"
-//                 | "continue" ";"
-//[]    refers to repeat zero or one time
+
 class Stmt : public Basenode
 {
 public:
@@ -538,7 +416,7 @@ public:
     std::unique_ptr<Basenode> stmt;
     std::unique_ptr<Basenode> optstmt;
 
-    void process_if_while(bool isloop = false) // return the header or tail flag
+    void process_if_while(bool isloop = false)
     {
         int cur = cnt_if++;
         std::string loopi = "%while_entry" + std::to_string(cur), theni = "%then" + std::to_string(cur), elsei = "%else" + std::to_string(cur), endi = "%end" + std::to_string(cur);
@@ -553,17 +431,18 @@ public:
         std::string predic = this->exp->dumpcode();
         std::string *judge = process_variable(predic);
 
-        std::string target = this->optstmt == nullptr ? endi : elsei; // 若没有else直接跳转到end
+        std::string target = this->optstmt == nullptr ? endi : elsei;
         if (judge)
         {
             std::cout << "    %" << getreg() << " = load %" << (*judge) << std::endl;
             std::cout << "    br %" << getreg() << "," << theni << "," << target << std::endl;
+            increg();
         }
         else
         {
             std::cout << "    br " << predic << "," << theni << "," << target << std::endl;
         }
-        increg();
+
         std::cout << theni << ":" << std::endl;
         bool istern = this->stmt->bdumpcode();
         if (!istern)
@@ -600,49 +479,43 @@ public:
             std::string ptr = lval->dumpcode(true);
             std::cout << "    store " << value << ", " << ptr << std::endl;
             return false;
-            break;
         }
         case 2:
             if (optexp != nullptr)
                 optexp->dumpcode();
             return false;
-            break;
         case 3:
             return block->bdumpcode();
-            break;
         case 4:
         {
-            std::string temp = "0";
             if (optexp != nullptr)
-                temp = optexp->dumpcode();
-            std::cout << "    ret " << temp << std::endl;
+            {
+                // 有返回值（比如 return 1;）
+                std::string temp = optexp->dumpcode();
+                std::cout << "    ret " << temp << std::endl;
+            }
+            else
+            {
+                // 无返回值（比如 return;）
+                std::cout << "    ret" << std::endl;
+            }
             return true;
             break;
         }
         case 5:
-        {
             process_if_while();
             return false;
-        }
-        break;
         case 6:
-        {
             process_if_while(true);
             return false;
-        }
-        break;
         case 7:
-        {
             if (!break_tag.empty())
             {
                 std::cout << "    jump " << break_tag.back() << std::endl;
                 return true;
             }
             return false;
-        }
-        break;
         case 8:
-        {
             if (!continue_tag.empty())
             {
                 std::cout << "    jump " << continue_tag.back() << std::endl;
@@ -650,13 +523,10 @@ public:
             }
             return false;
         }
-        break;
-        }
         return false;
     }
 };
 
-// Number      ::= INT_CONST;
 class Number : public Basenode
 {
 public:
@@ -675,7 +545,6 @@ public:
     }
 };
 
-// Exp         ::= LOrExp;
 class Exp : public Basenode
 {
 public:
@@ -689,12 +558,12 @@ public:
         return loexp->cal();
     }
 };
-// LVal          ::= IDENT {"[" Exp "]"};
+
 class Lval : public Basenode
 {
 public:
     std::string ident;
-    std::vector<std::unique_ptr<Basenode>> exp;
+
     std::string addr()
     {
         return std::string("%") + (varTable->find(ident))->val;
@@ -702,85 +571,55 @@ public:
     int cal()
     {
         auto i = constTable->find(ident);
-        return *i;
+        if (i)
+            return *i;
+        return 0;
     }
     std::string dumpcode(bool is_addr)
     {
-        if (exp.empty())
+        if (is_addr)
         {
-            if (is_addr)
-            {
-                return std::string("%") + (varTable->find(ident))->val;
-            }
-
-            auto c = constTable->find(ident);
-            if (c != nullptr)
-                return std::to_string(*c);
-
-            auto v = varTable->find(ident);
-            if (v != nullptr)
-            {
-                if (v->is_ptr)
-                {
-                    std::string reg = "%" + std::to_string(getreg());
-                    std::cout << "    " << reg << " = load %" << v->val << std::endl;
-                    increg();
-                    return reg;
-                }
-                else
-                    return "%" + v->val;
-            }
-            return "0";
+            return std::string("%") + (varTable->find(ident))->val;
         }
-        else
+
+        auto c = constTable->find(ident);
+        if (c != nullptr)
+            return std::to_string(*c);
+
+        auto v = varTable->find(ident);
+        if (v != nullptr)
         {
-            auto v = varTable->find(ident);
-            std::string target = "", source = "%" + v->val;
-            for (const auto &i : exp)
+            if (v->is_ptr)
             {
-                target = "%" + std::to_string(getreg());
+                std::string reg = "%" + std::to_string(getreg());
+                std::cout << "    " << reg << " = load %" << v->val << std::endl;
                 increg();
-                std::string temp = i->dumpcode();
-                std::cout << "    " << target << " = getelemptr " << source << " , " << temp << std::endl;
-                source = target;
+                return reg;
             }
-            if (!is_addr)
-            {
-                std::string ret_reg = "%" + std::to_string(getreg());
-                increg();
-                std::cout << "    " << ret_reg << " = load " << source << std::endl;
-                return ret_reg;
-            }
-            return source;
+            else
+                return "%" + v->val;
         }
+        return "0";
     }
 };
-// PrimaryExp    ::= "(" Exp ")" | LVal | Number;
+
 class PExp : public Basenode
 {
 public:
     std::unique_ptr<Basenode> exp;
     std::unique_ptr<Basenode> number;
     std::unique_ptr<Basenode> lval;
-    int which; // indicate which production we will chose
+    int which;
     std::string dumpcode()
     {
-
         switch (which)
         {
         case 1:
-
             return exp->dumpcode();
-            break;
         case 2:
-
             return lval->dumpcode(false);
         case 3:
-
             return number->dumpcode();
-            break;
-        default:
-            break;
         }
         return "";
     }
@@ -790,17 +629,15 @@ public:
         {
         case 1:
             return exp->cal();
-            break;
         case 2:
             return lval->cal();
         case 3:
             return number->cal();
-            break;
         }
         return 0;
     }
 };
-// UnaryExp :: = PrimaryExp | IDENT "("[FuncRParams] ")" | UnaryOp UnaryExp;
+
 class UExp : public Basenode
 {
 public:
@@ -816,7 +653,6 @@ public:
         {
         case 1:
             return pexp->dumpcode();
-            break;
         case 2:
         {
             std::string *temp = funcTable->find(ident);
@@ -828,16 +664,12 @@ public:
             {
                 reg = "%" + std::to_string(getreg());
                 increg();
-                std::cout << "    " << reg << " =  call @" << ident << "(" << args << ")" << std::endl;
+                std::cout << "    " << reg << " = call @" << ident << "(" << args << ")" << std::endl;
             }
             else
                 std::cout << "    call @" << ident << "(" << args << ")" << std::endl;
-            // increg();
-
             return reg;
         }
-        break;
-
         case 3:
         {
             std::string temp = uexp->dumpcode();
@@ -861,40 +693,29 @@ public:
                 return reg;
             }
         }
-
-        break;
         }
         return "";
     }
     int cal()
     {
-
         switch (which)
         {
         case 1:
             return pexp->cal();
-            break;
-
         case 2:
             int temp = uexp->cal();
             if (uop->retop() == "-")
-            {
                 return -1 * temp;
-            }
             else if (uop->retop() == "!")
-            {
                 return temp == 0;
-            }
             else if (uop->retop() == "+")
-            {
                 return temp;
-            }
             break;
         }
         return 0;
     }
 };
-// UnaryOp     ::= "+" | "-" | "!";
+
 class UOp : public Basenode
 {
 public:
@@ -905,12 +726,12 @@ public:
         return op;
     }
 };
-// FuncRParams   ::= Exp {"," Exp};
+
 class Funcrparams : public Basenode
 {
 public:
     std::vector<std::unique_ptr<Basenode>> explist;
-    std::string dumpcode() // return the list
+    std::string dumpcode()
     {
         std::ostringstream args;
         for (auto i = explist.begin(); i != explist.end(); i++)
@@ -918,13 +739,13 @@ public:
             args << (*i)->dumpcode();
             if ((*i) != explist.back())
             {
-                args << ",";
+                args << ", ";
             }
         }
         return args.str();
     }
 };
-//  MulExp      ::= UnaryExp | MulExp ("*" | "/" | "%") UnaryExp;
+
 class MExp : public Basenode
 {
 public:
@@ -938,44 +759,31 @@ public:
         {
         case 1:
             return uexp->dumpcode();
-            break;
         case 2:
             return help_tri(mexp.get(), uexp.get(), op);
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = uexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = mexp->cal();
             if (op == "*")
-            {
                 return temp1 * temp2;
-            }
             else if (op == "/")
-            {
                 return temp1 / temp2;
-            }
             else
-            {
                 return temp1 % temp2;
-            }
-            break;
         }
         return 0;
     }
 };
 
-// AddExp      ::= MulExp | AddExp ("+" | "-") MulExp;
 class AExp : public Basenode
 {
 public:
@@ -989,40 +797,29 @@ public:
         {
         case 1:
             return mexp->dumpcode();
-            break;
         case 2:
             return help_tri(aexp.get(), mexp.get(), op);
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = mexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = aexp->cal();
             if (op == "+")
-            {
                 return temp1 + temp2;
-            }
             else if (op == "-")
-            {
                 return temp1 - temp2;
-            }
-
-            break;
         }
         return 0;
     }
 };
-// RelExp      ::= AddExp | RelExp ("<" | ">" | "<=" | ">=") AddExp;
+
 class RExp : public Basenode
 {
 public:
@@ -1036,48 +833,33 @@ public:
         {
         case 1:
             return aexp->dumpcode();
-            break;
         case 2:
             return help_tri(rexp.get(), aexp.get(), op);
-
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = aexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = rexp->cal();
             if (op == "<")
-            {
                 return temp1 < temp2;
-            }
             else if (op == ">")
-            {
                 return temp1 > temp2;
-            }
             else if (op == "<=")
-            {
                 return temp1 <= temp2;
-            }
             else if (op == ">=")
-            {
                 return temp1 >= temp2;
-            }
-            break;
         }
         return 0;
     }
 };
-// EqExp       ::= RelExp | EqExp ("==" | "!=") RelExp;
+
 class EExp : public Basenode
 {
 public:
@@ -1090,46 +872,32 @@ public:
         switch (which)
         {
         case 1:
-            /* code */
             return rexp->dumpcode();
-            break;
-
         case 2:
             return help_tri(eexp.get(), rexp.get(), op);
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = rexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = eexp->cal();
             if (op == "==")
-            {
                 return temp1 == temp2;
-            }
             else if (op == "!=")
-            {
                 return temp1 != temp2;
-            }
-
-            break;
         }
         return 0;
     }
 };
-// LAndExp     ::= EqExp | LAndExp "&&" EqExp;
-inline void help_pro()
-{
-}
+
+inline void help_pro() {}
+
 class LAExp : public Basenode
 {
 public:
@@ -1142,32 +910,26 @@ public:
         {
         case 1:
             return eexp->dumpcode();
-            break;
         case 2:
             return help_tri_short(laexp.get(), eexp.get(), std::string("&&"));
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = eexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = laexp->cal();
             return temp1 && temp2;
-            break;
         }
         return 0;
     }
 };
-// LOrExp      ::= LAndExp | LOrExp "||" LAndExp;
+
 class LOExp : public Basenode
 {
 public:
@@ -1180,33 +942,26 @@ public:
         {
         case 1:
             return laexp->dumpcode();
-            break;
         case 2:
             return help_tri_short(loexp.get(), laexp.get(), std::string("||"));
-            break;
         }
         return "";
     }
     int cal()
     {
         int temp2 = laexp->cal();
-
         switch (which)
         {
         case 1:
             return temp2;
-            break;
-
         case 2:
             int temp1 = loexp->cal();
             return temp1 || temp2;
-
-            break;
         }
         return 0;
     }
 };
-// ConstExp      ::= Exp;
+
 class Constexp : public Exp
 {
 public:
@@ -1218,7 +973,6 @@ public:
     int cal()
     {
         return exp->cal();
-        return 0;
     }
 };
 
@@ -1230,14 +984,14 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     { auto n = std::make_unique<Number>(); n->num = "0"; return n; };
     auto create_one = []()
     { auto n = std::make_unique<Number>(); n->num = "1"; return n; };
-    auto result = std::make_unique<Vardecl>(); // int result=
+    auto result = std::make_unique<Vardecl>();
     auto bt = std::make_unique<Btype>();
     bt->t = "i32";
     result->btype = std::move(bt);
     auto def = std::make_unique<Vardef>();
     def->ident = res;
     def->which = 2;
-    auto st = std::make_unique<Stmt>(); // overall sentence
+    auto st = std::make_unique<Stmt>();
     auto stex = std::make_unique<Stmt>();
     auto eval = std::make_unique<EExp>();
     auto predic = std::make_unique<EExp>();
@@ -1248,7 +1002,6 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     predic->op = "==";
     predic->which = 2;
     predic->eexp = std::unique_ptr<Basenode>(n1);
-    // 4. 智能指针不能共享对象！用 Lambda 表达式每次生成全新的数字节点
 
     if (opname == "||")
     {
@@ -1275,175 +1028,14 @@ inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string 
     EExp *p = static_cast<EExp *>(st->exp.get());
     p->eexp.release();
 
-    // eval 藏在 st->stmt->exp 中，它拥有 n2
     Stmt *sx = static_cast<Stmt *>(st->stmt.get());
     EExp *e = static_cast<EExp *>(sx->exp.get());
     e->eexp.release();
-    // 修复 3：将计算结果 load 到临时寄存器中，并返回这个寄存器！
-    // 这样外层如果是赋值运算，拿到 "%3" 就可以直接 store 了。
+
     std::string ptr_name = varTable->find(res)->val;
     std::string reg = "%" + std::to_string(getreg());
     std::cout << "    " << reg << " = load %" << ptr_name << std::endl;
     increg();
 
-    return reg; // 完美返回寄存器
-}
-
-// get the whole initial array
-inline int process_init(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition)
-{
-    int startoffset = cur_offset;
-    Initval *i = dynamic_cast<Initval *>(ci);
-    if (!i)
-        return cur_offset;
-
-    if (i->which == 1)
-    {
-        flatten[cur_offset++] = i->cal();
-        return cur_offset;
-    }
-    else
-    {
-        auto &l = i->initval;
-        int cur_dim = 0;
-        for (auto &q : l)
-        {
-            Initval *item = dynamic_cast<Initval *>(q.get());
-            if (item && item->which == 1)
-            {
-                flatten[cur_offset++] = item->cal();
-            }
-            else if (item)
-            {
-                int ls = stride.size();
-                for (int s = ls - 1; s >= 0; s--)
-                {
-                    if (cur_offset % stride[s] == 0)
-                    {
-                        cur_dim = stride[s];
-                        break;
-                    }
-                }
-                cur_offset = process_init(flatten, item, stride, cur_dim);
-            }
-        }
-    }
-    return startoffset + addition;
-}
-inline int process(std::vector<int> &flatten, Basenode *ci, std::vector<int> &stride, int addition)
-{
-    int startoffset = cur_offset;
-    Constinit *i = dynamic_cast<Constinit *>(ci);
-    if (!i)
-        return cur_offset;
-
-    if (i->which == 1)
-    {
-        flatten[cur_offset++] = i->cal();
-        return cur_offset;
-    }
-    else
-    {
-        auto &l = i->constinit;
-        int cur_dim = 0;
-        for (auto &q : l)
-        {
-            Constinit *item = dynamic_cast<Constinit *>(q.get());
-            if (item && item->which == 1)
-            {
-                flatten[cur_offset++] = item->cal();
-            }
-            else if (item)
-            {
-                int ls = stride.size();
-                for (int s = ls - 1; s >= 0; s--)
-                {
-                    if (cur_offset % stride[s] == 0)
-                    {
-                        cur_dim = stride[s];
-                        break;
-                    }
-                }
-                cur_offset = process(flatten, item, stride, cur_dim);
-            }
-        }
-    }
-    return startoffset + addition;
-}
-
-inline void help_array(Basenode *node, bool isconst, bool isglobal)
-{
-    std::string ident;
-    Basenode *init;
-    std::vector<std::unique_ptr<Basenode>> const *exp = nullptr;
-    if (isconst)
-    {
-        auto n = reinterpret_cast<Constdef *>(node);
-        ident = n->ident;
-        init = (n->constinit).get();
-        exp = &(n->constexp);
-    }
-    else
-    {
-        auto n = reinterpret_cast<Vardef *>(node);
-        ident = n->ident;
-        init = (n->initval).get();
-        exp = &(n->constexp);
-    }
-    std::string dis_tag = std::to_string(varTable->getcnt());
-    std::string mapped_name = ident + dis_tag;
-    ele new_e;
-    new_e.is_ptr = true;
-    new_e.val = mapped_name;
-    if (isglobal)
-        varTable->add_global(ident, new_e);
-    else
-        varTable->add(ident, new_e);
-    int overallsize = 1;
-    std::vector<int> stride;
-    std::vector<int> detailsize;
-    for (auto i = exp->begin(); i != exp->end(); i++)
-    {
-        int temp = (*i)->cal();
-        stride.push_back(overallsize); // from small to big
-        overallsize = overallsize * temp;
-        detailsize.push_back(temp);
-    }
-    std::vector<int> flatten(overallsize, 0);
-    // process(flatten, init, stride, 0);
-    if (init != nullptr)
-    {
-        if (isconst)
-            process(flatten, init, stride, 0);
-        else
-            process_init(flatten, init, stride, 0);
-    }
-    int dim = detailsize.size();
-    std::string size_val = process_size(detailsize);
-    if (isglobal)
-    {
-        std::cout << "global %" << ident << " = alloc " << size_val;
-        std::cout << ", " << build_array(flatten.data(), detailsize, 0, 0) << std::endl;
-    }
-    else
-    {
-        std::cout << "%" << mapped_name << " = alloc " << size_val << std::endl;
-        std::string source, target = std::to_string(getreg());
-        increg();
-        for (int i = 0; i < overallsize; i++)
-        {
-            int pos, rest = i;
-            source = mapped_name;
-            for (int j = 0; j < dim; j++)
-            {
-                pos = (i / stride[j]) % detailsize[j];
-                rest /= stride[dim - 1 - j];
-                std::cout << "    %" << target << " = getelemptr %" << source << ", " << pos << std::endl;
-                source = target;
-                target = std::to_string(getreg());
-                increg();
-            }
-            std::cout << "    store " << flatten[i] << ", %" << source << std::endl;
-        }
-    }
+    return reg;
 }

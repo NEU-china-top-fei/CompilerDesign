@@ -41,8 +41,7 @@ using namespace std;
 %type <ast_val> FuncDef Block Stmt Number Exp LVal PEXp UExp UOp MExp AExp RExp EExp LAExp LOExp ConstExp FuncFParam FuncFParams FuncRParams
 %token LE GE EQ NE AND OR IF ELSE WHILE BREAK CONTINUE
 %type <op> HelpAdd HelpE HelpR HelpM
-%type <astlist> ConstDefList VarDefList BlockItemList Blockop FuncRlist FuncFlist ConstexpList InitList ConstinitList 
-%type <astlist> Optconstexp
+%type <astlist> ConstDefList VarDefList BlockItemList Blockop FuncRlist FuncFlist
 
 /* 解决 Dangling Else 的 shift/reduce 冲突 */
 %nonassoc LOWER_THEN_ELSE
@@ -93,14 +92,10 @@ OptExp
   ;
 
 LVal
-  : IDENT Optconstexp {
+  : IDENT {
     auto thisl = new Lval();
     thisl->ident = *($1); 
     delete $1; // 修复内存泄露：清空 lexer 传来的 string 指针
-    if($2) {
-        thisl->exp = std::move(*$2);
-        delete $2; // 修复内存泄露：清空 new 出来的 vector 指针
-    }
     $$ = thisl;
   }
   ;
@@ -117,47 +112,6 @@ Decl
     thisd->varde = unique_ptr<Basenode>($1);
     thisd->which = 2;
     $$ = thisd;
-  }
-  ;
-
-InitList
-  : InitVal {
-    auto node = new std::vector<std::unique_ptr<Basenode>>;
-    node->push_back(unique_ptr<Basenode>($1));
-    $$ = node;
-  }
-  | InitList ',' InitVal {
-    ($1)->push_back(unique_ptr<Basenode>($3));
-    $$ = $1;
-  }
-  ;
-
-ConstexpList 
-  : '[' ConstExp ']' {
-    auto node = new std::vector<std::unique_ptr<Basenode>>;
-    node->push_back(unique_ptr<Basenode>($2));
-    $$ = node;
-  }
-  | ConstexpList '[' ConstExp ']' {
-    ($1)->push_back(unique_ptr<Basenode>($3));
-    $$ = $1;
-  }
-  ;
-
-Optconstexp
-  : /* empty */ { $$ = nullptr; }
-  | ConstexpList { $$ = $1; }
-  ;
-
-ConstinitList
-  : ConstInitVal {
-    auto node = new std::vector<std::unique_ptr<Basenode>>;
-    node->push_back(unique_ptr<Basenode>($1));
-    $$ = node;
-  }
-  | ConstinitList ',' ConstInitVal {
-    ($1)->push_back(unique_ptr<Basenode>($3));
-    $$ = $1;
   }
   ;
 
@@ -226,15 +180,11 @@ BType
   ;
 
 ConstDef
-  : IDENT Optconstexp '=' ConstInitVal {
+  : IDENT '=' ConstInitVal {
     auto thisc = new Constdef();
     thisc->ident = *($1);
     delete $1;
-    if ($2) {  // 致命错误修复：增加判空，防止标量导致解引用空指针奔溃
-        thisc->constexp = std::move(*$2);
-        delete $2;
-    }
-    thisc->constinit = unique_ptr<Basenode>($4);
+    thisc->constinit = unique_ptr<Basenode>($3);
     $$ = thisc;
   };
 
@@ -242,20 +192,8 @@ ConstInitVal
   : ConstExp {
     auto thisc = new Constinit();
     thisc->cexp = unique_ptr<Basenode>($1);
-    thisc->which = 1;
+    //thisc->which = 1;
     $$ = thisc;
-  }
-  | '{' '}' {
-    auto l = new Constinit();
-    l->which = 2;
-    $$ = l;
-  }
-  | '{' ConstinitList '}' {
-    auto l = new Constinit();
-    l->constinit = std::move(*$2);
-    delete $2;
-    l->which = 2;
-    $$ = l;
   }
   ;
 
@@ -269,26 +207,18 @@ VarDecl
   };
 
 VarDef
-  : IDENT Optconstexp {
+  : IDENT {
     auto thisv = new Vardef();
     thisv->ident = *($1);
     delete $1;
-    if($2) {
-      thisv->constexp = std::move(*$2);
-      delete $2;
-    }
     thisv->which = 1;
     $$ = thisv;
   }
-  | IDENT Optconstexp '=' InitVal {
+  | IDENT '=' InitVal {
     auto thisv = new Vardef();
     thisv->ident = *($1);
     delete $1;
-    if($2) {
-      thisv->constexp = std::move(*$2);
-      delete $2;
-    }
-    thisv->initval = unique_ptr<Basenode>($4);
+    thisv->initval = unique_ptr<Basenode>($3);
     thisv->which = 2;
     $$ = thisv;
   };
@@ -297,20 +227,8 @@ InitVal
   : Exp {
     auto thisi = new Initval();
     thisi->exp = unique_ptr<Basenode>($1);
-    thisi->which = 1;
+    //thisi->which = 1;
     $$ = thisi;
-  }
-  | '{' '}' {
-    auto l = new Initval();
-    l->which = 2;
-    $$ = l;
-  }
-  | '{' InitList '}' {
-    auto l = new Initval();
-    l->which = 2;
-    l->initval = std::move(*$2);
-    delete $2;
-    $$ = l;
   }
   ;
 
@@ -364,17 +282,6 @@ FuncFParam
     f->ident = *($2);
     delete $2;
     $$ = f;
-  }
-  | BType IDENT '[' ']' Optconstexp {
-    auto f = new Funcfparam();
-    f->btype = unique_ptr<Basenode>($1);
-    f->ident = *($2);
-    delete $2;
-    if ($5) { // 致命错误修复：增加判空，并修复了遗漏 $$ = f; 的问题
-        f->constexp = std::move(*$5);
-        delete $5;
-    }
-    $$ = f; // 原代码这里漏了返回值
   }
   ;
 
