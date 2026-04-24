@@ -60,4 +60,4 @@ echo -e "\n------------------------------------------------"
 echo -e "\033[32m程序执行完毕，退出码 (Return/Exit Code): $RET_CODE\033[0m\n"
 
 # 可选：清理临时文件（取消注释以启用）
-# rm -f "$ASM_FILE" "$OBJ_FILE"
+rm -f "$ASM_FILE" "$OBJ_FILE"

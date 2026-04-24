@@ -896,8 +896,6 @@ public:
     }
 };
 
-inline void help_pro() {}
-
 class LAExp : public Basenode
 {
 public:
