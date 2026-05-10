@@ -37,7 +37,7 @@ class Basenode
 {
 public:
     virtual ~Basenode() = default;
-    virtual void dump() {};
+    virtual void dump(int depth = 0) {};
     virtual std::string dumpcode() { return std::string(""); };
     virtual std::string retop() { return std::string(""); };
     virtual std::string dumpcode(std::string &ident, bool isglobal) { return std::string(""); }
@@ -46,6 +46,15 @@ public:
     virtual int cal() { return 0; }
     virtual std::string addr() { return std::string(""); }
     virtual bool bdumpcode() { return false; }
+
+protected:
+    void printIdent(int depth)
+    {
+        for (int i = 0; i < depth; i++)
+        {
+            std::cout << "  ";
+        }
+    }
 };
 
 inline std::string help_tri_short(Basenode *n1, Basenode *n2, const std::string &opname);
@@ -103,11 +112,20 @@ public:
     std::unique_ptr<Basenode> decl;
     std::unique_ptr<Basenode> func_def;
     int which;
-    void dump()
+    void dump(int depth = 0)
     {
-        std::cout << "Compuit { ";
-        func_def->dump();
-        std::cout << " } ";
+        if (compunit)
+        {
+            compunit->dump(depth);
+        }
+        if (which == 1)
+        {
+            decl->dump(depth);
+        }
+        else
+        {
+            func_def->dump(depth);
+        }
     }
     std::string dumpcode()
     {
@@ -131,6 +149,18 @@ public:
     std::unique_ptr<Basenode> constde;
     std::unique_ptr<Basenode> varde;
     int which;
+    void dump(int depth = 0)
+    {
+        switch (which)
+        {
+        case 1:
+            constde->dump(depth);
+            break;
+        case 2:
+            varde->dump(depth);
+            break;
+        }
+    }
     std::string dumpcode(bool isglobal)
     {
         switch (which)
@@ -151,6 +181,16 @@ class ConstDecl : public Basenode
 public:
     std::unique_ptr<Basenode> btype;
     std::vector<std::unique_ptr<Basenode>> constdef;
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "ConstDecl:" << std::endl;
+        btype->dump(depth + 1);
+        for (auto &i : constdef)
+        {
+            i->dump(depth + 1);
+        }
+    }
     std::string dumpcode(bool isglobal)
     {
         for (auto i = constdef.begin(); i != constdef.end(); i++)
@@ -165,6 +205,11 @@ class Btype : public Basenode
 {
 public:
     std::string t;
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "BType: " << t << std::endl;
+    }
     std::string dumpcode()
     {
         return t;
@@ -176,7 +221,12 @@ class Constdef : public Basenode
 public:
     std::string ident;
     std::unique_ptr<Basenode> constinit;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "ConstDef: " << ident << std::endl;
+        constinit->dump(depth + 1);
+    }
     std::string dumpcode(bool isglobal)
     {
         constinit->dumpcode(ident, isglobal);
@@ -188,7 +238,12 @@ class Constinit : public Basenode
 {
 public:
     std::unique_ptr<Basenode> cexp;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "ConstInitVal: " << std::endl;
+        cexp->dump(depth + 1);
+    }
     std::string dumpcode(std::string &ident, bool isglobal)
     {
         int result = cexp->cal();
@@ -205,6 +260,16 @@ class Vardecl : public Basenode
 public:
     std::unique_ptr<Basenode> btype;
     std::vector<std::unique_ptr<Basenode>> vardef;
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "VarDecl:" << std::endl;
+        btype->dump(depth + 1);
+        for (auto &i : vardef)
+        {
+            i->dump(depth + 1);
+        }
+    }
     std::string dumpcode(bool isglobal)
     {
         for (auto i = vardef.begin(); i != vardef.end(); i++)
@@ -221,7 +286,15 @@ public:
     std::string ident;
     std::unique_ptr<Basenode> initval;
     int which;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "VarDef: " << ident << std::endl;
+        if (which == 2)
+        {
+            initval->dump(depth + 1);
+        }
+    }
     std::string dumpcode(Basenode *btype, bool isglobal)
     {
         std::string dis_tag = std::to_string(varTable->getcnt());
@@ -269,7 +342,12 @@ class Initval : public Basenode
 {
 public:
     std::unique_ptr<Basenode> exp;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "InitVal: " << std::endl;
+        exp->dump(depth + 1);
+    }
     std::string dumpcode()
     {
         return exp->dumpcode();
@@ -287,13 +365,18 @@ public:
     std::string ident;
     std::unique_ptr<Basenode> funcfparams;
     std::unique_ptr<Basenode> block;
-    void dump()
+    void dump(int depth = 0)
     {
-        std::cout << " Funcdef { ";
-        func_type->dump();
-        std::cout << ident;
-        block->dump();
-        std::cout << " } ";
+        printIdent(depth);
+        std::cout << "FuncDef: " << ident << std::endl;
+        func_type->dump(depth + 1);
+        if (funcfparams)
+        {
+            printIdent(depth + 1);
+            std::cout << "Params: " << std::endl;
+            funcfparams->dump(depth + 2);
+        }
+        block->dump(depth + 1);
     }
     std::string dumpcode()
     {
@@ -334,6 +417,13 @@ class Funcfparams : public Basenode
 {
 public:
     std::vector<std::unique_ptr<Basenode>> funcfparams;
+    void dump(int depth = 0)
+    {
+        for (auto &i : funcfparams)
+        {
+            i->dump(depth);
+        }
+    }
     std::string dumpcode()
     {
         for (auto i = funcfparams.begin(); i != funcfparams.end(); i++)
@@ -357,7 +447,12 @@ class Funcfparam : public Basenode
 public:
     std::unique_ptr<Basenode> btype;
     std::string ident;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "FuncFParam: " << ident << std::endl;
+        btype->dump(depth + 1);
+    }
     std::string dumpcode()
     {
         std::cout << "%" << ident << " : " << btype->dumpcode();
@@ -369,6 +464,17 @@ class Block : public Basenode
 {
 public:
     std::vector<std::unique_ptr<Basenode>> blockitem;
+    void dump(int depth = 0) override
+    {
+        printIdent(depth);
+        std::cout << "Block {" << std::endl;
+        for (const auto &item : blockitem)
+        {
+            item->dump(depth + 1); // 里面的语句深度 +1
+        }
+        printIdent(depth);
+        std::cout << "}" << std::endl;
+    }
     bool bdumpcode()
     {
         constTable = constTable->enter_scope();
@@ -392,6 +498,17 @@ public:
     std::unique_ptr<Basenode> decl;
     std::unique_ptr<Basenode> stmt;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            decl->dump(depth);
+        }
+        else
+        {
+            stmt->dump(depth);
+        }
+    }
     bool bdumpcode()
     {
         switch (which)
@@ -415,7 +532,67 @@ public:
     std::unique_ptr<Basenode> optexp;
     std::unique_ptr<Basenode> stmt;
     std::unique_ptr<Basenode> optstmt;
-
+    void dump(int depth = 0)
+    {
+        switch (which)
+        {
+        case 1:
+            printIdent(depth);
+            std::cout << "AssignStmt:" << std::endl;
+            lval->dump(depth + 1);
+            exp->dump(depth + 1);
+            break;
+        case 2:
+            if (optexp)
+            {
+                optexp->dump(depth);
+            }
+            else
+            {
+                printIdent(depth);
+                std::cout << "EmptyStmt: ;" << std::endl;
+            }
+            break;
+        case 4:
+            printIdent(depth);
+            std::cout << "ReturnStmt:" << std::endl;
+            if (optexp)
+                optexp->dump(depth + 1);
+            break;
+        case 5:
+            printIdent(depth);
+            std::cout << "IfStmt:" << std::endl;
+            printIdent(depth + 1);
+            std::cout << "Condition:" << std::endl;
+            exp->dump(depth + 2);
+            printIdent(depth + 1);
+            std::cout << "Then:" << std::endl;
+            stmt->dump(depth + 2);
+            if (optstmt)
+            {
+                printIdent(depth + 1);
+                std::cout << "Else:" << std::endl;
+                optstmt->dump(depth + 2);
+            }
+            break;
+        case 6:
+            printIdent(depth);
+            std::cout << "WhileStmt:" << std::endl;
+            printIdent(depth + 1);
+            std::cout << "Condition:" << std::endl;
+            exp->dump(depth + 2);
+            printIdent(depth + 1);
+            std::cout << "Body:" << std::endl;
+            stmt->dump(depth + 2);
+            break;
+        case 3:
+            block->dump(depth);
+            break;
+        default:
+            printIdent(depth);
+            std::cout << "Stmt" << std::endl;
+        }
+    }
     void process_if_while(bool isloop = false)
     {
         int cur = cnt_if++;
@@ -531,9 +708,10 @@ class Number : public Basenode
 {
 public:
     std::string num;
-    void dump()
+    void dump(int depth = 0)
     {
-        std::cout << num;
+        printIdent(depth);
+        std::cout << "Number: " << num << std::endl;
     }
     std::string dumpcode()
     {
@@ -549,6 +727,10 @@ class Exp : public Basenode
 {
 public:
     std::unique_ptr<Basenode> loexp;
+    void dump(int depth = 0)
+    {
+        loexp->dump(depth);
+    }
     std::string dumpcode()
     {
         return loexp->dumpcode();
@@ -563,7 +745,11 @@ class Lval : public Basenode
 {
 public:
     std::string ident;
-
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "LVal: " << ident << std::endl;
+    }
     std::string addr()
     {
         return std::string("%") + (varTable->find(ident))->val;
@@ -610,6 +796,26 @@ public:
     std::unique_ptr<Basenode> number;
     std::unique_ptr<Basenode> lval;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            exp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "PrimaryExp: " << std::endl;
+            if (which == 2)
+            {
+                lval->dump(depth + 1);
+            }
+            else
+            {
+                number->dump(depth + 1);
+            }
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -647,6 +853,31 @@ public:
     std::unique_ptr<Basenode> funcrparams;
     std::unique_ptr<Basenode> uexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            pexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            if (which == 2)
+            {
+                std::cout << "UnaryExp: " << ident << std::endl;
+                if (funcrparams)
+                {
+                    funcrparams->dump(depth + 1);
+                }
+            }
+            else
+            {
+                std::cout << "UnaryExp: " << std::endl;
+                uop->dump(depth + 1);
+                uexp->dump(depth + 1);
+            }
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -721,6 +952,11 @@ class UOp : public Basenode
 public:
     std::string op;
     int which;
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "UnaryOp: " << op << std::endl;
+    }
     std::string retop()
     {
         return op;
@@ -731,6 +967,15 @@ class Funcrparams : public Basenode
 {
 public:
     std::vector<std::unique_ptr<Basenode>> explist;
+    void dump(int depth = 0)
+    {
+        printIdent(depth);
+        std::cout << "FuncRParams: " << std::endl;
+        for (auto &i : explist)
+        {
+            i->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         std::ostringstream args;
@@ -753,6 +998,20 @@ public:
     std::string op;
     std::unique_ptr<Basenode> mexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            uexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "MulExp: " << op << std::endl;
+            mexp->dump(depth + 1);
+            uexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -791,6 +1050,20 @@ public:
     std::string op;
     std::unique_ptr<Basenode> aexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            mexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "AddExp: " << op << std::endl;
+            aexp->dump(depth + 1);
+            mexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -827,6 +1100,20 @@ public:
     std::string op;
     std::unique_ptr<Basenode> rexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            aexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "RelExp: " << op << std::endl;
+            rexp->dump(depth + 1);
+            aexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -867,6 +1154,20 @@ public:
     std::unique_ptr<Basenode> eexp;
     std::string op;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            rexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "EqExp: " << op << std::endl;
+            eexp->dump(depth + 1);
+            rexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -902,6 +1203,20 @@ public:
     std::unique_ptr<Basenode> eexp;
     std::unique_ptr<Basenode> laexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            eexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "LAndExp: &&" << std::endl;
+            eexp->dump(depth + 1);
+            laexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -934,6 +1249,20 @@ public:
     std::unique_ptr<Basenode> laexp;
     std::unique_ptr<Basenode> loexp;
     int which;
+    void dump(int depth = 0)
+    {
+        if (which == 1)
+        {
+            laexp->dump(depth);
+        }
+        else
+        {
+            printIdent(depth);
+            std::cout << "LOrExp: ||" << std::endl;
+            laexp->dump(depth + 1);
+            loexp->dump(depth + 1);
+        }
+    }
     std::string dumpcode()
     {
         switch (which)
@@ -964,6 +1293,10 @@ class Constexp : public Exp
 {
 public:
     std::unique_ptr<Basenode> exp;
+    void dump(int depth = 0)
+    {
+        exp->dump(depth);
+    }
     std::string dumpcode()
     {
         return exp->dumpcode();

@@ -8,11 +8,13 @@
 #include "traverse.hpp"
 #include <sstream>
 #include "ST.hpp"
+#include "sysy.tab.hpp"
 using namespace std;
 
 extern FILE *yyin;
 extern int yyparse(unique_ptr<Basenode> &ast);
 extern int yydebug;
+extern int yylex();
 int reg_cnt = 0;
 int cnt_if = 0, cur_offset = 0;
 int globalcnt = 0;
@@ -39,29 +41,67 @@ void process_lib()
   funcTable->add("starttime", "");
   funcTable->add("stoptime", "");
 }
+
+void lexer_output(){
+  int token;
+  while ((token = yylex()) != 0) {
+        cout << "Token类型: " << token << "\t";
+        
+        // 根据你 .l 文件中定义的 yylval 逻辑，打印具体的值
+        switch (token) {
+            case INT_CONST:
+                cout << "<整数常量, " << yylval.int_val << ">" << endl;
+                break;
+            case IDENT:
+                cout << "<标识符, " << *(yylval.str_val) << ">" << endl;
+                delete yylval.str_val; // 注意：你在 .l 中 new 了一个 string，测试完毕后要手动释放，防止内存泄漏
+                break;
+            case IF:      cout << "<关键字, " << yylval.op << ">" << endl; break;
+            case ELSE:    cout << "<关键字, " << yylval.op << ">" << endl; break;
+            case LE:      cout << "<操作符, " << yylval.op << ">" << endl; break;
+            case EQ:      cout << "<操作符, " << yylval.op << ">" << endl; break;
+            case INT:     cout << "<关键字, int>" << endl; break;
+            case RETURN:  cout << "<关键字, return>" << endl; break;
+            default:
+                // 如果是单字符（如 '+', '-', ';'），直接强转打印
+                if (token < 256) {
+                    cout << "<单字符, '" << (char)token << "'>" << endl;
+                } else {
+                    cout << "<其他Token>" << endl;
+                }
+                break;
+        }
+    }
+}
 int main(int argc, const char *argv[])
 {
-
   process_lib();
   assert(argc == 5);
   auto mode = argv[1];
   auto input = argv[2];
   auto output = argv[4];
   std::ostringstream os;
-  os << "decl @getint() : i32 " << std::endl
-     << "decl @getch() : i32" << std::endl
-     << "decl @getarray(*i32) : i32" << std::endl
-     << "decl @putint(i32)" << std::endl
-     << "decl @putch(i32) " << std::endl
-     << "decl @putarray(i32, *i32)" << std::endl
-     << "decl @starttime()" << std::endl
-     << "decl @stoptime()" << std::endl;
+  
   // yydebug = 1;
   yyin = fopen(input, "r");
   assert(yyin);
+  string m=string(mode);
+  if(m=="-lexer"){
+    freopen(output, "w", stdout);
+    lexer_output();
+    std::cout << os.str();
+    return 0;
+  }
+  
   unique_ptr<Basenode> ast;
   auto ret = yyparse(ast);
   assert(!ret);
+  if(m=="-parser"){
+    freopen(output, "w", stdout);
+    std::cout << os.str();
+    ast->dump(0);
+    return 0;
+  }
   name2op["+"] = "add";
   name2op["-"] = "sub";
   name2op["*"] = "mul";
@@ -76,14 +116,21 @@ int main(int argc, const char *argv[])
   name2op["&&"] = "and";
   name2op["||"] = "or";
   name2op["!"] = "eq";
-  if (string(mode) == "-koopa")
+  os << "decl @getint() : i32 " << std::endl
+     << "decl @getch() : i32" << std::endl
+     << "decl @getarray(*i32) : i32" << std::endl
+     << "decl @putint(i32)" << std::endl
+     << "decl @putch(i32) " << std::endl
+     << "decl @putarray(i32, *i32)" << std::endl
+     << "decl @starttime()" << std::endl
+     << "decl @stoptime()" << std::endl;
+  if (m == "-koopa")
   {
     freopen(output, "w", stdout);
     std::cout << os.str();
-    // std::cerr << "before ast" << std::endl;
     ast->dumpcode();
   }
-  if (string(mode) == "-riscv")
+  else if (m == "-riscv")
   {
     koopa_program_t program;
     ostringstream buffer;
